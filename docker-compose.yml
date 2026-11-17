@@ -1,0 +1,36 @@
+# SeatRush local stack.
+# Stage 0: only PostgreSQL. The API and the web app join in stage 10.
+#
+# Every ${VAR:-default} has a default value, so `docker compose up` works on a
+# fresh clone without creating a .env file (the brief: "no manual steps").
+# A .env file next to this one, if it exists, overrides the defaults.
+
+name: seatrush
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-seatrush}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-seatrush}
+      POSTGRES_DB: ${DB_NAME:-seatrush}
+    ports:
+      # "host:container". On your machine it's port 55432, not the usual 5432
+      # (or 5433), so it doesn't clash with a PostgreSQL that is already
+      # installed or running for another project.
+      - "${DB_PORT:-55432}:5432"
+    volumes:
+      # Keeps the data when the container is recreated.
+      # `docker compose down -v` deletes it for a clean start.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # "Healthy" only when PostgreSQL accepts connections, not just when the
+      # container has started. `$$` means: compose must not replace this; the
+      # shell inside the container reads its own variable.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

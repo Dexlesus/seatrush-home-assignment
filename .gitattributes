@@ -1,0 +1,3 @@
+# Store every text file with LF line endings, even when committed from Windows.
+# Docker containers run Linux, where a CRLF line ending can break shell scripts.
+* text=auto eol=lf

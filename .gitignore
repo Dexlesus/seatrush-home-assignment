@@ -1,0 +1,23 @@
+# Dependencies: re-created by `npm ci` from package-lock.json
+node_modules/
+
+# Build output: re-created by `npm run build`
+dist/
+*.tsbuildinfo
+
+# Local env files can hold secrets. Only the example is committed.
+.env
+.env.*
+!.env.example
+
+# Test coverage reports
+coverage/
+
+# Logs
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
