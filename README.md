@@ -8,10 +8,17 @@ Fans wait for the drop, hold up to 4 seats for a few minutes, and buy them. Admi
 - **Extra credit:** no lone seats (`NO_LONE_SEATS=true`), promo codes at checkout (`SAVE10`, `WELCOME20`), and an **admin screen** to create events (http://localhost:5173/admin).
 
 ## Run it
+**You need:**
+- **Docker** (Docker Desktop on Windows or Mac), and nothing else. PostgreSQL, the API and the web app all run in containers.
+- **Ports 5173, 3000 and 55432 free.**
+- **Node.js 24**, but only to run the tests or the rush script (see *Tests*).
+
 ```bash
+git clone https://github.com/Dexlesus/seatrush-home-assignment.git
+cd seatrush-home-assignment
 docker compose up --build
 ```
-No `.env` file and no other steps are needed. This starts:
+No `.env` file and no other steps are needed. The first build takes a few minutes. It's ready when `api` and `web` report healthy. This starts:
 
 | What | Where |
 |---|---|
@@ -20,7 +27,17 @@ No `.env` file and no other steps are needed. This starts:
 | Interactive API docs (OpenAPI) | http://localhost:3000/docs. The JSON is at http://localhost:3000/docs-json |
 | PostgreSQL | `localhost:55432` (user / password / db: `seatrush`) |
 
-On a fresh start the API runs its migrations and creates **one demo event that is already on sale** ("SeatRush Live: Opening Night", 10 rows × 16 seats, 3 zones).
+### What's in the database at the start
+On a fresh start, the API creates the tables (migrations) and **one demo event that is already on sale**:
+
+| Event | Seats | Zones and prices |
+|---|---|---|
+| **SeatRush Live: Opening Night**, Menora Mivtachim Arena. Starts in 30 days, on sale since a minute ago | 10 rows (A–J) × 16 seats = **160 seats, all available** | **VIP** rows A–B ₪450 · **Floor** rows C–F ₪280 · **Balcony** rows G–J ₪149 |
+
+- **There are no fans, holds or orders yet.** A fan is created the first time someone logs in with a name.
+- **To make more events,** use the admin screen (http://localhost:5173/admin) or `POST /api/events`. For example, an event that drops in 1 minute shows the countdown.
+- **The demo event is created only when the database has no events,** so a restart never adds a second one.
+- **To see the tables directly:** `docker compose exec db psql -U seatrush -d seatrush`, then `\dt`.
 
 A short hold time, and the "no lone seats" extra credit switched on:
 ```bash
