@@ -82,6 +82,13 @@ export class EventResponseDto {
   @ApiProperty({ example: 4 })
   seatsPerRow: number;
 
+  @ApiProperty({
+    example: 4,
+    description:
+      'MAX_SEATS_PER_USER: the most seats one fan can have for this event (held + bought). The screen uses it to stop a fan picking more.',
+  })
+  maxSeatsPerFan: number;
+
   @ApiProperty({ type: [ZoneResponseDto] })
   zones: ZoneResponseDto[];
 }

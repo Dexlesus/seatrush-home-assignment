@@ -30,6 +30,8 @@ export interface EventDetails extends EventSummary {
   serverNow: string;
   rowCount: number;
   seatsPerRow: number;
+  /** MAX_SEATS_PER_USER: held + bought seats one fan may have for this event. */
+  maxSeatsPerFan: number;
   zones: Zone[];
 }
 

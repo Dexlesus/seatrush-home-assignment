@@ -56,6 +56,10 @@ export function SeatMap({ seats, zones, selected, mine, onToggle }: Props) {
                 return (
                   <Tooltip
                     key={seat.label}
+                    // The bubble never catches the mouse, so the seat under it
+                    // stays clickable.
+                    disableInteractive
+                    placement="top"
                     title={`${seat.label} · ${seat.zone} · ${formatAgorot(seat.priceAgorot)} · ${describe(look)}`}
                   >
                     <span>

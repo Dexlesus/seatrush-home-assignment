@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import type { EnvironmentVariables } from '../config/env.validation.js';
 import { DomainError } from '../common/errors/domain-error.js';
 import {
   generateSeats,
@@ -24,10 +26,15 @@ const SEAT_INSERT_BATCH = 1000;
 
 @Injectable()
 export class EventsService {
+  private readonly maxSeatsPerFan: number;
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly clock: DbClock,
-  ) {}
+    config: ConfigService<EnvironmentVariables, true>,
+  ) {
+    this.maxSeatsPerFan = config.get('MAX_SEATS_PER_USER', { infer: true });
+  }
 
   /** Rule 2: every event, soonest drop first, with "is the sale open?". */
   async list(): Promise<EventListResponseDto> {
@@ -113,7 +120,12 @@ export class EventsService {
         );
       }
 
-      return toEventResponse(event, zones, await this.clock.now(manager));
+      return toEventResponse(
+        event,
+        zones,
+        await this.clock.now(manager),
+        this.maxSeatsPerFan,
+      );
     });
   }
 
@@ -124,7 +136,12 @@ export class EventsService {
       where: { eventId },
       order: { fromRow: 'ASC' },
     });
-    return toEventResponse(event, zones, await this.clock.now());
+    return toEventResponse(
+      event,
+      zones,
+      await this.clock.now(),
+      this.maxSeatsPerFan,
+    );
   }
 
   /** Every seat of the event, row by row, with its zone, price and status. */
@@ -196,6 +213,7 @@ function toEventResponse(
   event: EventEntity,
   zones: ZoneEntity[],
   now: Date,
+  maxSeatsPerFan: number,
 ): EventResponseDto {
   return {
     id: event.id,
@@ -207,6 +225,7 @@ function toEventResponse(
     dropAt: event.dropAt.toISOString(),
     rowCount: event.rowCount,
     seatsPerRow: event.seatsPerRow,
+    maxSeatsPerFan,
     zones: zones.map((zone) => ({
       name: zone.name,
       fromRow: rowLabel(zone.fromRow),

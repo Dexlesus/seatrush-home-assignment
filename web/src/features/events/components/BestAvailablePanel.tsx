@@ -17,6 +17,8 @@ import { largestBlockAvailable } from '../../../lib/seats';
 interface Props {
   seats: Seat[];
   zones: Zone[];
+  /** The most seats this fan may still take (rule 4), at most 4. */
+  maxCount: number;
   disabled: boolean;
   onFind: (body: HoldBody) => void;
 }
@@ -26,8 +28,10 @@ interface Props {
  * screen already knows the most seats together that are free right now, and
  * greys out the counts that can't fit. (The server still decides.)
  */
-export function BestAvailablePanel({ seats, zones, disabled, onFind }: Props) {
-  const [count, setCount] = useState(2);
+export function BestAvailablePanel({ seats, zones, maxCount, disabled, onFind }: Props) {
+  const [chosen, setCount] = useState(2);
+  // Never more than the fan may still take (after buying 3, only "1 together").
+  const count = Math.max(1, Math.min(chosen, maxCount));
   const [zone, setZone] = useState('');
   // '' = any price; otherwise the max price in agorot, as text (Select values).
   const [maxPrice, setMaxPrice] = useState('');
@@ -56,7 +60,7 @@ export function BestAvailablePanel({ seats, zones, disabled, onFind }: Props) {
         aria-label="How many seats together"
       >
         {[1, 2, 3, 4].map((n) => (
-          <ToggleButton key={n} value={n} disabled={n > largest}>
+          <ToggleButton key={n} value={n} disabled={n > largest || n > maxCount}>
             {n} together
           </ToggleButton>
         ))}

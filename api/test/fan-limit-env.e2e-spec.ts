@@ -1,3 +1,4 @@
+import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { createEvent, hold, logIn } from './support/api.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
@@ -29,5 +30,13 @@ describe('Rule 4: the limit comes from MAX_SEATS_PER_USER (e2e)', () => {
     });
 
     await hold(server, dana, eventId, { seats: ['A1', 'A2'] }).expect(201);
+  });
+
+  it('the event tells the screen the limit, so it can stop a fan picking more', async () => {
+    const eventId = await createEvent(server);
+
+    const res = await request(server).get(`/api/events/${eventId}`).expect(200);
+
+    expect(res.body.maxSeatsPerFan).toBe(2);
   });
 });

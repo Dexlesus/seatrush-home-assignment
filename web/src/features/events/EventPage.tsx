@@ -21,19 +21,19 @@ import {
   useGetEventQuery,
   useGetSeatsQuery,
   useMyHoldsQuery,
+  useMyOrdersQuery,
   useReleaseHoldMutation,
 } from '../../api/seatrushApi';
 import type { Hold, HoldBody, Order } from '../../api/types';
 import { useAppSelector } from '../../app/hooks';
 import { errorCode, friendlyError, joinSeats } from '../../lib/errors';
 import { formatAgorot } from '../../lib/money';
+import { seatsLeftToPick } from '../../lib/seats';
 import { formatCountdown, useServerNow } from '../../lib/time';
 import { useSlow } from '../../lib/useSlow';
 import { BestAvailablePanel } from './components/BestAvailablePanel';
 import { HoldPanel } from './components/HoldPanel';
 import { SeatMap } from './components/SeatMap';
-
-const MAX_PER_HOLD = 4;
 
 interface Notice {
   severity: 'error' | 'info' | 'success' | 'warning';
@@ -54,6 +54,8 @@ export function EventPage() {
     skipPollingIfUnfocused: true,
   });
   const holdsQuery = useMyHoldsQuery(undefined, { skip: !fan });
+  // Seats this fan already bought, for the per-fan limit (rule 4).
+  const ordersQuery = useMyOrdersQuery(undefined, { skip: !fan });
   const now = useServerNow(seatsQuery.data?.serverNow ?? eventQuery.data?.serverNow);
 
   const [createHold, holdState] = useCreateHoldMutation();
@@ -119,12 +121,43 @@ export function EventPage() {
     .filter((s) => picked.includes(s.label))
     .reduce((sum, s) => sum + s.priceAgorot, 0);
 
+  // Rule 4 on screen: what the fan already has for this event (bought + held
+  // and not expired) decides how many more seats they may pick.
+  const bought = (ordersQuery.data?.orders ?? [])
+    .filter((o) => o.eventId === eventId)
+    .reduce((sum, o) => sum + o.seats.length, 0);
+  const held = (holdsQuery.data?.holds ?? [])
+    .filter(
+      (h) =>
+        h.eventId === eventId &&
+        !closedHoldIds.includes(h.holdId) &&
+        Date.parse(h.expiresAt) > now,
+    )
+    .reduce((sum, h) => sum + h.seats.length, 0);
+  const { remaining, canPick } = seatsLeftToPick({
+    limit: event.maxSeatsPerFan,
+    bought,
+    held,
+  });
+  const atLimit = fan !== null && remaining === 0;
+
   function toggle(label: string) {
     setNotice(null);
     if (picked.includes(label)) {
       setSelected(picked.filter((l) => l !== label));
-    } else if (picked.length >= MAX_PER_HOLD) {
-      setNotice({ severity: 'info', text: `You can pick up to ${MAX_PER_HOLD} seats at a time.` });
+    } else if (atLimit) {
+      setNotice({
+        severity: 'info',
+        text: `You already have ${bought + held} seats for this show, the most one fan can have.`,
+      });
+    } else if (picked.length >= canPick) {
+      setNotice({
+        severity: 'info',
+        text:
+          canPick < 4
+            ? `You can add ${canPick} more seat${canPick === 1 ? '' : 's'} for this show (you have ${bought + held}).`
+            : 'You can pick up to 4 seats at a time.',
+      });
     } else {
       setSelected([...picked, label]);
     }
@@ -286,12 +319,26 @@ export function EventPage() {
                     onRelease={() => void doRelease()}
                     onHoldAgain={() => void doHold({ seats: hold.seats.map((s) => s.label) })}
                   />
+                ) : atLimit ? (
+                  <Alert
+                    severity="success"
+                    action={
+                      <Button color="inherit" component={RouterLink} to="/tickets">
+                        My tickets
+                      </Button>
+                    }
+                  >
+                    You have {bought + held} seats for this show, the most one fan can have. 🎟️
+                  </Alert>
                 ) : (
                   <>
                     <Typography variant="subtitle1">Your selection</Typography>
                     {picked.length === 0 ? (
                       <Typography color="text.secondary">
-                        Click up to {MAX_PER_HOLD} seats on the map.
+                        Click up to {canPick} seat{canPick === 1 ? '' : 's'} on the map.
+                        {bought + held > 0
+                          ? ` You already have ${bought + held} for this show.`
+                          : ''}
                       </Typography>
                     ) : (
                       <Typography>
@@ -310,6 +357,7 @@ export function EventPage() {
                     <BestAvailablePanel
                       seats={seatMap.seats}
                       zones={event.zones}
+                      maxCount={canPick}
                       disabled={!saleOpen || busy}
                       onFind={(body) => void doHold(body)}
                     />

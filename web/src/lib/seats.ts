@@ -21,6 +21,28 @@ export function groupByRow<T extends SeatLike>(
     }));
 }
 
+/** One hold is 1–4 seats (rule 3). */
+export const MAX_SEATS_PER_HOLD = 4;
+
+/**
+ * Rule 4 from the fan's side: how many more seats this fan may have for the
+ * event (`remaining`), and how many they can pick for one hold (`canPick`).
+ * The screen uses it so a fan who already bought 3 can only pick 1 more.
+ * (The server still enforces the limit; this only avoids a useless click.)
+ */
+export function seatsLeftToPick({
+  limit,
+  bought,
+  held,
+}: {
+  limit: number;
+  bought: number;
+  held: number;
+}): { remaining: number; canPick: number } {
+  const remaining = Math.max(0, limit - bought - held);
+  return { remaining, canPick: Math.min(MAX_SEATS_PER_HOLD, remaining) };
+}
+
 /**
  * The most seats side by side that are free right now, in any one row.
  * The screen uses it to disable "3 together" before the fan even clicks.
