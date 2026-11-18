@@ -62,3 +62,32 @@ describe('findBestBlock (rule 7): N seats together, best first', () => {
     expect(findBestBlock(hall(['....']), 5, 4)).toBeNull();
   });
 });
+
+describe('findBestBlock with no lone seats (extra credit)', () => {
+  const noLoneSeats = { noLoneSeats: true };
+
+  it("the brief's example: every pair in row B leaves a lone seat → C4–C5", () => {
+    const seats = hall(['xxxxxxxx', '...xx...', '........']);
+
+    expect(findBestBlock(seats, 2, 8, noLoneSeats)).toEqual(['C4', 'C5']);
+  });
+
+  it('keeps the most central block when it leaves no lone seat', () => {
+    expect(findBestBlock(hall(['........']), 2, 8, noLoneSeats)).toEqual([
+      'A4',
+      'A5',
+    ]);
+  });
+
+  it('moves off the centre to avoid a lone seat in the same row', () => {
+    // 5 seats, N = 2: A2–A3 and A3–A4 leave A1 / A5 alone; A1–A2 doesn't.
+    expect(findBestBlock(hall(['.....']), 2, 5, noLoneSeats)).toEqual([
+      'A1',
+      'A2',
+    ]);
+  });
+
+  it('returns null when every block would leave a lone seat', () => {
+    expect(findBestBlock(hall(['...']), 2, 3, noLoneSeats)).toBeNull();
+  });
+});

@@ -47,6 +47,12 @@ describe('validateEnv', () => {
     );
   });
 
+  it('NO_LONE_SEATS is off by default and turns on with "true"', () => {
+    expect(validateEnv({}).NO_LONE_SEATS).toBe(false);
+    expect(validateEnv({ NO_LONE_SEATS: 'true' }).NO_LONE_SEATS).toBe(true);
+    expect(validateEnv({ NO_LONE_SEATS: 'false' }).NO_LONE_SEATS).toBe(false);
+  });
+
   it('reports every invalid variable at once, not only the first one', () => {
     expect(() =>
       validateEnv({ HOLD_TTL_SECONDS: 'abc', PORT: '99999' }),
