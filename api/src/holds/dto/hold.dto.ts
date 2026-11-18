@@ -95,6 +95,12 @@ export class HoldResponseDto {
   totalAgorot: number;
 
   @ApiProperty({
+    example: '2026-11-20T10:00:00.000Z',
+    description: 'When the hold was made.',
+  })
+  createdAt: string;
+
+  @ApiProperty({
     example: '2026-11-20T10:05:00.000Z',
     description:
       'From this moment checkout fails and the seats are back on sale.',

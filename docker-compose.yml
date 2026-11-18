@@ -1,8 +1,10 @@
-# SeatRush local stack.
-# Stage 0: only PostgreSQL. The API and the web app join in stage 10.
+# SeatRush: one command, `docker compose up --build`, starts everything:
+#   db  → PostgreSQL 17
+#   api → http://localhost:3000   (docs: http://localhost:3000/docs)
+#   web → http://localhost:5173
 #
-# Every ${VAR:-default} has a default value, so `docker compose up` works on a
-# fresh clone without creating a .env file (the brief: "no manual steps").
+# Every ${VAR:-default} has a default value, so it works on a fresh clone
+# without creating a .env file (the brief: "no manual steps").
 # A .env file next to this one, if it exists, overrides the defaults.
 
 name: seatrush
@@ -31,6 +33,42 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build: ./api
+    environment:
+      # Inside the compose network the database is "db" on its normal port.
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-seatrush}
+      DB_PASSWORD: ${DB_PASSWORD:-seatrush}
+      DB_NAME: ${DB_NAME:-seatrush}
+      # The two business settings the reviewers change (they test a short hold).
+      HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-300}
+      MAX_SEATS_PER_USER: ${MAX_SEATS_PER_USER:-4}
+      PORT: 3000
+      SEED_DEMO_EVENT: ${SEED_DEMO_EVENT:-true}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy # wait until PostgreSQL accepts connections
+    healthcheck:
+      # Healthy = the API answers AND reaches the database (GET /api/health).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  web:
+    build: ./web
+    ports:
+      - "5173:8080"
+    depends_on:
+      api:
+        condition: service_healthy # open the site only once the API works
 
 volumes:
   pgdata:

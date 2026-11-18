@@ -266,9 +266,17 @@ export class HoldsService {
     now: Date,
   ): Promise<HoldResponseDto> {
     const holds = await manager.query<
-      { eventId: string; status: HoldStatus; expiresAt: Date }[]
+      {
+        eventId: string;
+        status: HoldStatus;
+        expiresAt: Date;
+        createdAt: Date;
+      }[]
     >(
-      `SELECT event_id AS "eventId", status, expires_at AS "expiresAt"
+      `SELECT event_id   AS "eventId",
+              status,
+              expires_at AS "expiresAt",
+              created_at AS "createdAt"
          FROM holds WHERE id = $1`,
       [holdId],
     );
@@ -293,6 +301,7 @@ export class HoldsService {
       status: hold.status,
       seats,
       totalAgorot: seats.reduce((sum, seat) => sum + seat.priceAgorot, 0),
+      createdAt: hold.createdAt.toISOString(),
       expiresAt: hold.expiresAt.toISOString(),
       serverNow: now.toISOString(),
     };
