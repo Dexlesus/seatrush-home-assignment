@@ -18,6 +18,8 @@ export interface SelectionInput {
   eventId: string;
   seatsPerRow: number;
   now: Date;
+  /** Extra credit: best available skips blocks that leave a lone seat. */
+  noLoneSeats: boolean;
 }
 
 /**

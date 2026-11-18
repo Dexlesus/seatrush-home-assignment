@@ -46,6 +46,7 @@ services:
       # The two business settings the reviewers change (they test a short hold).
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-300}
       MAX_SEATS_PER_USER: ${MAX_SEATS_PER_USER:-4}
+      NO_LONE_SEATS: ${NO_LONE_SEATS:-false}
       PORT: 3000
       SEED_DEMO_EVENT: ${SEED_DEMO_EVENT:-true}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}

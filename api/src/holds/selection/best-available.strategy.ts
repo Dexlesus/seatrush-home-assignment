@@ -38,6 +38,7 @@ export class BestAvailableStrategy implements SeatSelectionStrategy {
     eventId,
     seatsPerRow,
     now,
+    noLoneSeats,
   }: SelectionInput): Promise<string[]> {
     const rows = await manager.query<
       {
@@ -71,6 +72,7 @@ export class BestAvailableStrategy implements SeatSelectionStrategy {
       rows.map((seat) => ({ ...seat, free: isSeatFree(seat, now) })),
       this.request.count,
       seatsPerRow,
+      { noLoneSeats },
     );
     if (!block) {
       throw new DomainError(

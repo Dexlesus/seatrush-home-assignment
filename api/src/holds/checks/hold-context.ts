@@ -4,6 +4,10 @@ import type { SeatStatus } from '../../events/entities/seat.entity.js';
 export interface SeatSnapshot {
   id: string;
   label: string;
+  /** 0 = row A. */
+  rowIndex: number;
+  /** 1 = the leftmost seat. */
+  seatNumber: number;
   status: SeatStatus;
   /** When the current hold on it ends; null if nobody holds it. */
   heldUntil: Date | null;
@@ -28,9 +32,16 @@ export interface HoldContext {
   requestedLabels: string[];
   /** The requested seats that exist, as locked in the database. */
   seats: SeatSnapshot[];
+  /**
+   * EVERY seat in the rows the fan asked for (also locked), so the
+   * no-lone-seats check can see the neighbours.
+   */
+  rowSeats: SeatSnapshot[];
   /** Rule 4: seats the fan already has for this event, and the limit. */
   fanSeats: {
     current: number;
     limit: number;
   };
+  /** Extra credit: NO_LONE_SEATS from the environment. */
+  noLoneSeats: boolean;
 }

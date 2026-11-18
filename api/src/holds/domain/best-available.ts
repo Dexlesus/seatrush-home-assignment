@@ -1,3 +1,5 @@
+import { loneSeatsLeft } from './lone-seats.js';
+
 /**
  * Rule 7: "N seats together". A pure function: give it the candidate seats
  * (already filtered by max price / zone), get back the best block or null.
@@ -26,6 +28,7 @@ export function findBestBlock(
   seats: CandidateSeat[],
   count: number,
   seatsPerRow: number,
+  options: { noLoneSeats?: boolean } = {},
 ): string[] | null {
   if (count < 1 || count > seatsPerRow) {
     return null;
@@ -44,10 +47,21 @@ export function findBestBlock(
 
   for (const rowIndex of nearestRowFirst) {
     const row = rows.get(rowIndex) ?? new Map<number, CandidateSeat>();
+    const freeRow = Array.from(
+      { length: seatsPerRow },
+      (_, i) => row.get(i + 1)?.free === true,
+    );
     let best: { first: number; distance: number } | null = null;
 
     for (let first = 1; first + count - 1 <= seatsPerRow; first++) {
       if (!isFreeBlock(row, first, count)) {
+        continue;
+      }
+      // Extra credit: skip blocks that would leave one seat stuck alone.
+      if (
+        options.noLoneSeats &&
+        loneSeatsLeft(freeRow, blockSeats(first, count)).length > 0
+      ) {
         continue;
       }
       const blockMiddle = first + (count - 1) / 2;
@@ -59,14 +73,15 @@ export function findBestBlock(
     }
 
     if (best !== null) {
-      const { first } = best;
-      return Array.from(
-        { length: count },
-        (_, i) => row.get(first + i)?.label ?? '',
-      );
+      return blockSeats(best.first, count).map((n) => row.get(n)?.label ?? '');
     }
   }
   return null;
+}
+
+/** first = 3, count = 2 → [3, 4] */
+function blockSeats(first: number, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => first + i);
 }
 
 function isFreeBlock(

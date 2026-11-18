@@ -1,5 +1,6 @@
 import { chainOf, type HoldCheck } from './hold-check.js';
 import { FanLimitCheck } from './fan-limit.check.js';
+import { NoLoneSeatsCheck } from './no-lone-seats.check.js';
 import { SaleOpenCheck } from './sale-open.check.js';
 import { SeatCountCheck } from './seat-count.check.js';
 import { SeatsAvailableCheck } from './seats-available.check.js';
@@ -16,6 +17,7 @@ export function holdChain() {
     new SeatsExistCheck(), // rules 1/3: the seats are in this hall
     new FanLimitCheck(), // rule 4: held + bought ≤ MAX_SEATS_PER_USER
     new SeatsAvailableCheck(), // rules 3/5/6: all free, or nothing is held
+    new NoLoneSeatsCheck(), // extra credit: no single seat left stuck alone
   ];
   const [first, ...rest] = checks;
   if (!first) {

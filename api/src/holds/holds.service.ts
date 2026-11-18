@@ -34,6 +34,7 @@ export class HoldsService {
   private readonly checks = holdChain();
   private readonly ttlSeconds: number;
   private readonly maxSeatsPerFan: number;
+  private readonly noLoneSeats: boolean;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -43,6 +44,7 @@ export class HoldsService {
   ) {
     this.ttlSeconds = config.get('HOLD_TTL_SECONDS', { infer: true });
     this.maxSeatsPerFan = config.get('MAX_SEATS_PER_USER', { infer: true });
+    this.noLoneSeats = config.get('NO_LONE_SEATS', { infer: true });
   }
 
   /** POST /api/events/:eventId/holds: hold seats, all or nothing. */
@@ -91,29 +93,37 @@ export class HoldsService {
     const event = await this.findEvent(manager, eventId);
     const now = await this.clock.now(manager);
 
-    // Which seats? (best available locks its candidate seats, in id order)
+    // Which seats? (best available locks its candidate rows, in id order)
     const requestedLabels = await strategy.chooseSeats({
       manager,
       eventId,
       seatsPerRow: event.seatsPerRow,
       now,
+      noLoneSeats: this.noLoneSeats,
     });
 
-    // Lock 2: the requested seats, in id order.
-    const seats = await manager.query<SeatSnapshot[]>(
+    // Lock 2: every seat in the ROWS of the requested seats, in id order.
+    // The whole row, so the no-lone-seats check sees neighbours that no other
+    // request can change under it. (One statement, id order: no deadlocks.)
+    const rowSeats = await manager.query<SeatSnapshot[]>(
       `SELECT s.id,
               s.label,
+              s.row_index    AS "rowIndex",
+              s.seat_number  AS "seatNumber",
               s.status,
               s.held_until   AS "heldUntil",
               z.price_agorot AS "priceAgorot"
          FROM seats s
          JOIN zones z ON z.id = s.zone_id
         WHERE s.event_id = $1
-          AND s.label = ANY($2::text[])
+          AND s.row_index IN (SELECT row_index FROM seats
+                               WHERE event_id = $1 AND label = ANY($2::text[]))
         ORDER BY s.id
           FOR UPDATE OF s`,
       [eventId, requestedLabels],
     );
+    const requested = new Set(requestedLabels);
+    const seats = rowSeats.filter((seat) => requested.has(seat.label));
 
     const current = await this.countFanSeats(manager, fanId, eventId, now);
 
@@ -124,7 +134,9 @@ export class HoldsService {
       event,
       requestedLabels,
       seats,
+      rowSeats,
       fanSeats: { current, limit: this.maxSeatsPerFan },
+      noLoneSeats: this.noLoneSeats,
     });
 
     // All good: write the hold.

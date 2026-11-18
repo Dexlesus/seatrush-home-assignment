@@ -9,6 +9,11 @@ import {
   validateSync,
 } from 'class-validator';
 
+/** "true" / "TRUE" → true, any other text → false. */
+function toBoolean({ value }: { value: unknown }): unknown {
+  return typeof value === 'string' ? value.toLowerCase() === 'true' : value;
+}
+
 /**
  * Every environment variable the API reads, with its type, its rules and its
  * default. The defaults match .env.example and docker-compose.yml, so the API
@@ -55,10 +60,13 @@ export class EnvironmentVariables {
   @Max(65535)
   PORT: number = 3000;
 
+  /** Extra credit: reject holds that leave one seat stuck alone. Off by default. */
+  @Transform(toBoolean)
+  @IsBoolean()
+  NO_LONE_SEATS: boolean = false;
+
   /** Create one demo event, already on sale, when the database has no events. */
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.toLowerCase() === 'true' : value,
-  )
+  @Transform(toBoolean)
   @IsBoolean()
   SEED_DEMO_EVENT: boolean = true;
 

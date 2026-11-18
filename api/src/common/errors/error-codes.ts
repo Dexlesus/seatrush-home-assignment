@@ -52,6 +52,11 @@ export const ERROR_STATUS = {
 
   // Rule 7: best available.
   NO_SEATS_TOGETHER: HttpStatus.CONFLICT,
+
+  // Extra credit: no lone seats, promo codes.
+  LONE_SEAT: HttpStatus.CONFLICT,
+  PROMO_CODE_UNKNOWN: HttpStatus.BAD_REQUEST,
+  PROMO_CODE_USED: HttpStatus.CONFLICT,
 } as const satisfies Record<string, HttpStatus>;
 
 /** 'VALIDATION_FAILED' | 'INTERNAL_ERROR' | ...: made from the keys above. */
