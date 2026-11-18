@@ -6,7 +6,7 @@ import { findBestBlock, type CandidateSeat } from './best-available.js';
  */
 function hall(rows: string[], prices: number[] = []): CandidateSeat[] {
   return rows.flatMap((row, rowIndex) =>
-    [...row].map((char, i) => ({
+    row.split('').map((char, i) => ({
       label: `${String.fromCharCode(65 + rowIndex)}${i + 1}`,
       rowIndex,
       seatNumber: i + 1,

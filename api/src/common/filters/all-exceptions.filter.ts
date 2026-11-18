@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isRetryableConflict } from '../../database/postgres-errors.js';
 import { DomainError } from '../errors/domain-error.js';
 import { ERROR_STATUS } from '../errors/error-codes.js';
 import type { ErrorResponseDto } from '../errors/error-response.dto.js';
@@ -30,6 +31,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = http.getResponse<Response>();
 
     const facts = this.describe(exception);
+    if (facts.code === 'BUSY_TRY_AGAIN') {
+      // Tells clients (and the web app) when it's worth retrying.
+      response.setHeader('Retry-After', '1');
+    }
     const body: ErrorResponseDto = {
       ...facts,
       // originalUrl, not url: Express can cut the start of `url` along the
@@ -65,7 +70,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
-    // 3. Anything else is a bug. Log the real error for us, and send the
+    // 3. PostgreSQL rolled back a transaction to stay consistent (deadlock or
+    //    serialization failure). Nothing was saved: the client may retry.
+    if (isRetryableConflict(exception)) {
+      this.logger.warn('Database asked for a retry (deadlock/serialization)');
+      return {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        code: 'BUSY_TRY_AGAIN',
+        message: 'Lots of fans are clicking right now. Please try again.',
+        details: {},
+      };
+    }
+
+    // 4. Anything else is a bug. Log the real error for us, and send the
     //    client a generic message: never SQL, stack traces or internal names.
     this.logger.error(
       'Unexpected error',
