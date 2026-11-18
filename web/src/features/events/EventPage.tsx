@@ -56,7 +56,10 @@ export function EventPage() {
   const holdsQuery = useMyHoldsQuery(undefined, { skip: !fan });
   // Seats this fan already bought, for the per-fan limit (rule 4).
   const ordersQuery = useMyOrdersQuery(undefined, { skip: !fan });
-  const now = useServerNow(seatsQuery.data?.serverNow ?? eventQuery.data?.serverNow);
+  const now = useServerNow(
+    seatsQuery.data?.serverNow ?? eventQuery.data?.serverNow,
+    seatsQuery.data ? seatsQuery.fulfilledTimeStamp : eventQuery.fulfilledTimeStamp,
+  );
 
   const [createHold, holdState] = useCreateHoldMutation();
   const [releaseHold, releaseState] = useReleaseHoldMutation();

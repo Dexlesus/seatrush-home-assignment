@@ -18,10 +18,10 @@ import { formatCountdown, useServerNow } from '../../lib/time';
 
 /** Events list, each with a live countdown to its drop (by the server clock). */
 export function EventsPage() {
-  const { data, error, isLoading, refetch } = useListEventsQuery(undefined, {
+  const { data, error, isLoading, refetch, fulfilledTimeStamp } = useListEventsQuery(undefined, {
     pollingInterval: 15_000,
   });
-  const now = useServerNow(data?.serverNow);
+  const now = useServerNow(data?.serverNow, fulfilledTimeStamp);
 
   if (isLoading) {
     return (

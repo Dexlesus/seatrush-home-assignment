@@ -1,4 +1,4 @@
-import { formatCountdown, holdPhase, minutesMessage } from './time';
+import { formatCountdown, holdPhase, minutesMessage, nextClockOffset } from './time';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -31,6 +31,26 @@ describe('holdPhase: the colour of the hold countdown', () => {
 
   it('is expired at zero', () => {
     expect(holdPhase(0)).toBe('expired');
+  });
+});
+
+describe('nextClockOffset: a steady countdown, even when responses are slow', () => {
+  it('takes the first sample as it is', () => {
+    expect(nextClockOffset(null, 120)).toBe(120);
+  });
+
+  it('ignores a slower response (a smaller sample), so the timer does not jump back and forth', () => {
+    // The server read its clock, then the answer took 300 ms to arrive: that
+    // sample looks 300 ms "behind". The best (largest) sample so far is kept.
+    expect(nextClockOffset(-2, -300)).toBe(-2);
+  });
+
+  it('takes a faster response, which is closer to the truth', () => {
+    expect(nextClockOffset(-111, -2)).toBe(-2);
+  });
+
+  it('starts over when the clocks really moved (more than 5 s), e.g. the computer clock was changed', () => {
+    expect(nextClockOffset(0, -60 * SECOND)).toBe(-60 * SECOND);
   });
 });
 

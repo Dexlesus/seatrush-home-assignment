@@ -45,24 +45,45 @@ export function minutesMessage(msLeft: number, totalMs: number): string {
 }
 
 /**
+ * How far the server clock is from this computer's clock, from one more
+ * sample (`serverNow` minus the moment its response ARRIVED here).
+ *
+ * The server reads its clock and then the answer travels, so every sample is
+ * a little "behind" by the travel time. The largest sample is the most
+ * accurate, so we keep it: a slow response can't make the countdown jump.
+ * A change of more than 5 s means the clocks really moved: start over.
+ */
+export function nextClockOffset(current: number | null, sample: number): number {
+  if (current === null || Math.abs(sample - current) > 5 * SECOND) {
+    return sample;
+  }
+  return Math.max(current, sample);
+}
+
+/**
  * "Now" by the SERVER's clock, ticking every second.
  * The fan's computer clock may be wrong; the API sends `serverNow`, and we keep
  * the difference between the two clocks.
+ *
+ * @param receivedAt when that response arrived (RTK Query's
+ *   `fulfilledTimeStamp`). Data from the cache can be minutes old: comparing
+ *   its serverNow with the time of the response, not with "now", stays right.
  */
-export function useServerNow(serverNow: string | undefined): number {
+export function useServerNow(serverNow: string | undefined, receivedAt?: number): number {
   // How far the server clock is from this computer's clock.
-  const offset = useRef(0);
+  const offset = useRef<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (serverNow) {
-      offset.current = Date.parse(serverNow) - Date.now();
+      const sample = Date.parse(serverNow) - (receivedAt ?? Date.now());
+      offset.current = nextClockOffset(offset.current, sample);
       setNow(Date.now() + offset.current);
     }
-  }, [serverNow]);
+  }, [serverNow, receivedAt]);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now() + offset.current), SECOND);
+    const timer = setInterval(() => setNow(Date.now() + (offset.current ?? 0)), SECOND);
     return () => clearInterval(timer);
   }, []);
 
