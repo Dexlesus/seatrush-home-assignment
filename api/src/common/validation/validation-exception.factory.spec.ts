@@ -56,7 +56,9 @@ describe('validationExceptionFactory', () => {
     const result = validationExceptionFactory([
       fieldError('zones', undefined, [
         fieldError('0', undefined, [
-          fieldError('priceAgorot', { min: 'priceAgorot must not be less than 0' }),
+          fieldError('priceAgorot', {
+            min: 'priceAgorot must not be less than 0',
+          }),
         ]),
       ]),
     ]);
@@ -73,11 +75,15 @@ describe('validationExceptionFactory', () => {
 
   it('reports fields that are not allowed at all', () => {
     const result = validationExceptionFactory([
-      fieldError('isAdmin', { whitelistValidation: 'property isAdmin should not exist' }),
+      fieldError('isAdmin', {
+        whitelistValidation: 'property isAdmin should not exist',
+      }),
     ]);
 
     expect(result.details).toEqual({
-      errors: [{ field: 'isAdmin', problems: ['property isAdmin should not exist'] }],
+      errors: [
+        { field: 'isAdmin', problems: ['property isAdmin should not exist'] },
+      ],
     });
   });
 });

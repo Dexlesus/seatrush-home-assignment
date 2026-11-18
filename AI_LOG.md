@@ -26,4 +26,13 @@
 - It wrote `docker-compose.yml`, `.env.example`, `.gitignore` and `.gitattributes`.
 - The AI removed starter files we don't need (the vendor README, AGENTS.md, a paid deploy tool) and turned `no-explicit-any` on.
 - The AI checked `npm audit`: 0 issues in production code. It advised against `npm audit fix --force`, which would downgrade Vitest.
+- The first `docker compose up` failed: port 5433 was taken by another project's container, and 5432 by a local PostgreSQL. We moved to 55432 and wrote down why.
+- My review: _(I fill this in after the walkthrough)_
+
+### Stage 0b: config, errors, docs (TDD)
+- The AI wrote the tests first (commit `test: ... (red)`), ran them, and showed they failed. Then it wrote the code.
+- **The tests caught two real problems in the AI's first version:**
+  - The error `path` used `request.url`, which came back as `/nope` instead of `/api/nope`. Fixed by using `request.originalUrl`.
+  - The config test crashed with `Reflect.getMetadata is not a function`, because unit tests run without NestJS, which normally loads `reflect-metadata`. Fixed by loading it in the Vitest setup.
+- Checked by hand: a bad `HOLD_TTL_SECONDS` stops the server with a clear message, and `/docs-json` is served.
 - My review: _(I fill this in after the walkthrough)_

@@ -17,7 +17,7 @@ function createHost(url: string) {
   const status = vi.fn().mockReturnValue({ json });
   const host = {
     switchToHttp: () => ({
-      getRequest: () => ({ url }),
+      getRequest: () => ({ originalUrl: url }),
       getResponse: () => ({ status }),
     }),
   } as unknown as ArgumentsHost;
@@ -30,9 +30,13 @@ describe('AllExceptionsFilter', () => {
 
   it('sends a DomainError with its code, message, details and the status from the catalog', () => {
     const { host, status, sentBody } = createHost('/api/session');
-    const error = new DomainError('VALIDATION_FAILED', 'Some fields are invalid: name', {
-      errors: [{ field: 'name', problems: ['name is too short'] }],
-    });
+    const error = new DomainError(
+      'VALIDATION_FAILED',
+      'Some fields are invalid: name',
+      {
+        errors: [{ field: 'name', problems: ['name is too short'] }],
+      },
+    );
 
     filter.catch(error, host);
 

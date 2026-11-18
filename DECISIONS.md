@@ -19,6 +19,19 @@ A living document: every stage adds to it. The sections follow the brief.
   - The flaw is a slow regex on glob patterns, and we only pass it patterns we wrote ourselves.
   - The suggested `npm audit fix --force` would downgrade Vitest to v3, which is a breaking change, so we don't run it.
 
+## Architecture (so far)
+- **`configureApp()`** (`api/src/app.setup.ts`) holds everything global: the `/api` prefix, validation, the error filter and Swagger. `main.ts` **and the E2E tests** both call it, so the tests run the same app as production.
+- **Config fails fast.** Every env var is validated at startup (`api/src/config/env.validation.ts`). A bad value such as `HOLD_TTL_SECONDS=abc` stops the server with a message that lists every problem. Without this, it would break later, in the middle of a drop.
+- **One error shape:** `{ statusCode, code, message, details, path, timestamp }`.
+  - Services throw `DomainError(code, message, details)` and know nothing about HTTP.
+  - The **error catalog** (`error-codes.ts`) maps each code to its HTTP status. TypeScript makes sure every code has one.
+  - Nest's own errors (unknown route, broken JSON) get the same shape, with a code made from the status (`NOT_FOUND`).
+  - Unexpected crashes are logged in full, but the client only gets a generic message: no SQL and no stack traces.
+- **Validation:** `class-validator` checks both request bodies and config. It's one library, and Swagger understands it.
+  - Unknown fields are rejected (`forbidNonWhitelisted`).
+  - Errors list every field with its full path, for example `zones.0.priceAgorot`.
+- **Docs:** interactive docs at `/docs`, OpenAPI JSON at `/docs-json`. API routes live under `/api`.
+
 ## Infrastructure
 - `docker compose up` works on a fresh clone **without a `.env` file**, because every variable has a default (`${VAR:-default}`). The brief says "no manual steps".
 - PostgreSQL is published on host port **55432**, not 5432, so it doesn't clash with a PostgreSQL that is already installed or running for another project.

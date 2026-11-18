@@ -44,7 +44,9 @@ describe('App setup (e2e)', () => {
   });
 
   it('serves the OpenAPI JSON at /docs-json, including our routes', async () => {
-    const res = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/docs-json')
+      .expect(200);
 
     expect(res.body).toHaveProperty('openapi');
     expect(res.body).toHaveProperty(['paths', '/api/health']);
