@@ -121,6 +121,7 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
   - The same seat twice → 400 `DUPLICATE_SEATS`.
   - An unknown seat → 400 `SEAT_NOT_FOUND`.
   - Both `seats` and `bestAvailable` in one request → 400 `INVALID_HOLD_REQUEST`.
+- **A hold can't grow.** To change the seats, the fan releases and holds again. Adding seats to a running hold would raise hard questions: does the timer restart (then a fan could keep seats forever by adding one every 5 minutes)? The trade-off: on release, someone else can grab the seats. The API already allows a second, separate hold (rule 4 counts all of them); the screen shows one hold at a time to keep one timer and one checkout.
 - **Release:**
   - Another fan's hold → **404** (we don't confirm it exists).
   - An expired or already-released hold → 204, and nothing changes.
