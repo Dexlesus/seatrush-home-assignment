@@ -34,6 +34,18 @@ describe('friendlyError: errors read like people talk, not like "Error 409"', ()
     );
   });
 
+  it('explains a lone seat and promo code problems in plain words', () => {
+    expect(friendlyError(apiError(409, 'LONE_SEAT', { seats: ['B1'] }))).toBe(
+      'That would leave B1 on its own, and a single seat is hard to sell. Add it, or pick seats that leave 2 or more together.',
+    );
+    expect(friendlyError(apiError(400, 'PROMO_CODE_UNKNOWN', { promoCode: 'FREE' }))).toBe(
+      '"FREE" isn\'t a code we know. Check the spelling, or check out without it.',
+    );
+    expect(friendlyError(apiError(409, 'PROMO_CODE_USED', { promoCode: 'WELCOME20' }))).toBe(
+      'You already used WELCOME20 on an earlier order. Remove it and check out, or try SAVE10.',
+    );
+  });
+
   it('turns a network failure into a calm message', () => {
     expect(friendlyError({ status: 'FETCH_ERROR', error: 'TypeError' })).toBe(
       "We can't reach the server right now. Check your connection and try again.",
