@@ -1,4 +1,4 @@
-import { alpha, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
+import { alpha, Box, Button, Chip, LinearProgress, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import type { Hold } from '../../../api/types';
 import { ClockIcon } from '../../../components/icons';
@@ -25,7 +25,7 @@ const PHASE_COLOR: Record<HoldPhase, string> = {
   expired: TOKENS.rose,
 };
 
-/** The hold, in the bottom bar: a live countdown that changes colour, the seats, and checkout. */
+/** The hold: a live countdown (and a time bar) that changes colour, the seats, and checkout. */
 export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain }: Props) {
   const [promoCode, setPromoCode] = useState('');
   const msLeft = Date.parse(hold.expiresAt) - now;
@@ -33,44 +33,39 @@ export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain 
   const phase = holdPhase(msLeft);
   const expired = phase === 'expired';
   const color = PHASE_COLOR[phase];
+  const percentLeft = totalMs > 0 ? Math.max(0, Math.min(100, (msLeft / totalMs) * 100)) : 0;
 
   return (
-    <Stack
-      direction={{ xs: 'column', md: 'row' }}
-      spacing={2}
-      sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between', width: '100%' }}
-    >
+    <Stack spacing={2}>
       {/* The countdown */}
-      <Stack
-        direction="row"
-        spacing={1.5}
+      <Box
         sx={{
-          alignItems: 'center',
-          px: 2,
-          py: 1,
+          p: 2,
           borderRadius: 4,
           border: 1,
           borderColor: alpha(color, 0.5),
-          bgcolor: alpha(color, phase === 'calm' ? 0.08 : 0.18),
+          bgcolor: alpha(color, phase === 'calm' ? 0.08 : 0.16),
           boxShadow: phase === 'calm' ? 'none' : TOKENS.glow(color, 0.45),
           transition: 'all 0.4s',
         }}
       >
-        <ClockIcon sx={{ color }} />
-        <Box>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+          <ClockIcon sx={{ fontSize: 18, color }} />
+          <Typography sx={{ fontSize: 13, fontWeight: 800, color }}>
             {expired ? 'Your hold ran out' : 'Your seats are held'}
           </Typography>
-          {expired ? (
-            <Typography variant="caption" color="text.secondary">
-              The seats went back on sale. They might still be free.
-            </Typography>
-          ) : (
+        </Stack>
+        {expired ? (
+          <Typography variant="body2" color="text.secondary">
+            The seats went back on sale. Try again: they might still be free.
+          </Typography>
+        ) : (
+          <>
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline' }}>
               <Typography
                 component="span"
                 aria-live="off"
-                sx={{ fontSize: 26, fontWeight: 900, lineHeight: 1.1, color, fontVariantNumeric: 'tabular-nums' }}
+                sx={{ fontSize: 34, fontWeight: 900, lineHeight: 1.1, color, fontVariantNumeric: 'tabular-nums' }}
               >
                 {formatCountdown(msLeft)}
               </Typography>
@@ -79,12 +74,24 @@ export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain 
                 {minutesMessage(msLeft, totalMs)}
               </Typography>
             </Stack>
-          )}
-        </Box>
-      </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={percentLeft}
+              aria-label="Time left on your hold"
+              sx={{
+                mt: 1.25,
+                height: 6,
+                borderRadius: 99,
+                bgcolor: alpha(color, 0.15),
+                '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 99, transition: 'transform 1s linear' },
+              }}
+            />
+          </>
+        )}
+      </Box>
 
       {/* The seats and the total */}
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1, flexGrow: 1 }}>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
         {hold.seats.map((seat) => (
           <Chip
             key={seat.label}
@@ -97,43 +104,40 @@ export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain 
             }}
           />
         ))}
-        <Typography sx={{ ml: 1 }}>
-          <Typography component="span" variant="caption" color="text.secondary">
-            Total{' '}
-          </Typography>
-          <Typography component="span" sx={{ fontSize: 22, fontWeight: 900 }}>
-            {formatAgorot(hold.totalAgorot)}
-          </Typography>
-        </Typography>
+      </Stack>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Typography color="text.secondary">Total</Typography>
+        <Typography sx={{ fontSize: 26, fontWeight: 900 }}>{formatAgorot(hold.totalAgorot)}</Typography>
       </Stack>
 
       {/* Actions */}
       {expired ? (
-        <Button variant="contained" size="large" onClick={onHoldAgain} disabled={busy}>
+        <Button variant="contained" size="large" onClick={onHoldAgain} disabled={busy} fullWidth>
           Try to hold them again
         </Button>
       ) : (
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Stack spacing={1.25}>
           <TextField
-            label="Promo code"
+            label="Promo code (optional)"
             size="small"
             value={promoCode}
             onChange={(e) => setPromoCode(e.target.value)}
             placeholder="SAVE10"
+            fullWidth
             slotProps={{ htmlInput: { maxLength: 32 } }}
-            sx={{ width: 130 }}
           />
           <Button
             variant="contained"
             size="large"
             onClick={() => onCheckout(promoCode.trim() || undefined)}
             disabled={busy}
-            sx={{ px: 3 }}
+            fullWidth
+            sx={{ py: 1.5 }}
           >
             {busy ? 'Working…' : 'Checkout'}
           </Button>
           <Button onClick={onRelease} disabled={busy} color="inherit" sx={{ color: 'text.secondary' }}>
-            Release
+            Release these seats
           </Button>
         </Stack>
       )}

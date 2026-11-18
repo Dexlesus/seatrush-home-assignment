@@ -73,7 +73,8 @@ function fakeServer() {
             seatNumber: n,
             zone: 'All',
             priceAgorot: 10000,
-            status: 'AVAILABLE',
+            // A4 is held by someone else; the rest are free.
+            status: n === 4 ? 'HELD' : 'AVAILABLE',
           })),
         });
       case '/api/me/holds':
@@ -142,5 +143,17 @@ describe('EventPage (screen test with a fake server)', () => {
 
     expect(await screen.findByText('Your seats are held')).toBeInTheDocument();
     expect(server.holdRequests).toHaveLength(1);
+  });
+
+  it('pointing at a seat someone else holds says so, and clicking it selects nothing', async () => {
+    const user = userEvent.setup();
+    renderEventPage();
+
+    const heldSeat = await screen.findByRole('button', { name: 'Seat A4, held by someone' });
+    await user.hover(heldSeat);
+    expect(await screen.findByText(/Held by another fan/)).toBeInTheDocument();
+
+    await user.click(heldSeat);
+    expect(screen.getByText('Your selection (0)')).toBeInTheDocument();
   });
 });

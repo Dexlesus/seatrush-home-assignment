@@ -53,69 +53,56 @@ export function BestAvailablePanel({ seats, zones, maxCount, disabled, onFind }:
   const fits = count <= largest;
 
   return (
-    <Stack spacing={1}>
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 1.25,
-          p: 1,
-          borderRadius: 4,
-          bgcolor: alpha(TOKENS.slate[900], 0.8),
-          border: 1,
-          borderColor: alpha(TOKENS.slate[800], 0.9),
-        }}
-      >
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            alignItems: 'center',
-            px: 1.5,
-            py: 0.5,
-            borderRadius: 3,
-            bgcolor: alpha(TOKENS.slate[950], 0.9),
-            border: 1,
-            borderColor: TOKENS.slate[800],
-          }}
-        >
-          <UsersIcon sx={{ fontSize: 18, color: 'secondary.main' }} />
-          <Typography variant="caption" color="text.secondary">
-            Seats together:
-          </Typography>
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={count}
-            onChange={(_e, value: number | null) => value && setCount(value)}
-            aria-label="How many seats together"
-            sx={{ gap: 0.5, '& .MuiToggleButtonGroup-grouped': { border: 0, borderRadius: '8px !important' } }}
-          >
-            {[1, 2, 3, 4].map((n) => (
-              <ToggleButton
-                key={n}
-                value={n}
-                disabled={n > largest || n > maxCount}
-                aria-label={`${n} together`}
-                sx={{
-                  width: 30,
-                  height: 28,
-                  fontWeight: 800,
-                  '&.Mui-selected, &.Mui-selected:hover': {
-                    bgcolor: 'secondary.main',
-                    color: 'secondary.contrastText',
-                    boxShadow: TOKENS.glow(TOKENS.cyan, 0.5),
-                  },
-                }}
-              >
-                {n}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        </Stack>
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <SparklesIcon sx={{ fontSize: 18, color: 'secondary.main' }} />
+        <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+          Best available
+        </Typography>
+      </Stack>
+      <Typography variant="caption" color="text.secondary" sx={{ mt: '-4px !important' }}>
+        We pick the row nearest the stage, then the most central seats.
+      </Typography>
 
-        <FormControl size="small" sx={{ minWidth: 130 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <UsersIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+        <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+          Seats together
+        </Typography>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={count}
+          onChange={(_e, value: number | null) => value && setCount(value)}
+          aria-label="How many seats together"
+          sx={{ gap: 0.5, '& .MuiToggleButtonGroup-grouped': { border: 0, borderRadius: '8px !important' } }}
+        >
+          {[1, 2, 3, 4].map((n) => (
+            <ToggleButton
+              key={n}
+              value={n}
+              disabled={n > largest || n > maxCount}
+              aria-label={`${n} together`}
+              sx={{
+                width: 34,
+                height: 32,
+                fontWeight: 800,
+                bgcolor: alpha(TOKENS.slate[950], 0.6),
+                '&.Mui-selected, &.Mui-selected:hover': {
+                  bgcolor: 'secondary.main',
+                  color: 'secondary.contrastText',
+                  boxShadow: TOKENS.glow(TOKENS.cyan, 0.5),
+                },
+              }}
+            >
+              {n}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Stack>
+
+      <Stack direction="row" spacing={1}>
+        <FormControl size="small" fullWidth>
           <InputLabel id="zone-label">Zone</InputLabel>
           <Select labelId="zone-label" label="Zone" value={zone} onChange={(e) => setZone(e.target.value)}>
             <MenuItem value="">Any zone</MenuItem>
@@ -126,7 +113,7 @@ export function BestAvailablePanel({ seats, zones, maxCount, disabled, onFind }:
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 140 }}>
+        <FormControl size="small" fullWidth>
           <InputLabel id="price-label">Max price</InputLabel>
           <Select labelId="price-label" label="Max price" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)}>
             <MenuItem value="">Any price</MenuItem>
@@ -137,36 +124,36 @@ export function BestAvailablePanel({ seats, zones, maxCount, disabled, onFind }:
             ))}
           </Select>
         </FormControl>
-
-        <Button
-          disabled={disabled || !fits}
-          startIcon={<SparklesIcon sx={{ fontSize: 16 }} />}
-          onClick={() =>
-            onFind({
-              bestAvailable: {
-                count,
-                ...(zone ? { zone } : {}),
-                ...(maxPriceAgorot !== null ? { maxPriceAgorot } : {}),
-              },
-            })
-          }
-          sx={{
-            px: 2,
-            borderRadius: 3,
-            color: 'secondary.main',
-            bgcolor: alpha(TOKENS.cyan, 0.15),
-            border: 1,
-            borderColor: alpha(TOKENS.cyan, 0.3),
-            '&:hover': { bgcolor: alpha(TOKENS.cyan, 0.25) },
-          }}
-        >
-          Find {count} together
-        </Button>
       </Stack>
-      <Typography variant="caption" color={largest === 0 ? 'error' : 'text.secondary'} sx={{ px: 1 }}>
+
+      <Button
+        disabled={disabled || !fits}
+        fullWidth
+        startIcon={<SparklesIcon sx={{ fontSize: 16 }} />}
+        onClick={() =>
+          onFind({
+            bestAvailable: {
+              count,
+              ...(zone ? { zone } : {}),
+              ...(maxPriceAgorot !== null ? { maxPriceAgorot } : {}),
+            },
+          })
+        }
+        sx={{
+          py: 1.1,
+          color: 'secondary.main',
+          bgcolor: alpha(TOKENS.cyan, 0.15),
+          border: 1,
+          borderColor: alpha(TOKENS.cyan, 0.3),
+          '&:hover': { bgcolor: alpha(TOKENS.cyan, 0.25) },
+        }}
+      >
+        Find {count} together
+      </Button>
+      <Typography variant="caption" color={largest === 0 ? 'error' : 'text.secondary'}>
         {largest === 0
           ? 'No free seats match these filters right now.'
-          : `Best available picks the row nearest the stage, then the most central block. Right now the most seats together is ${largest}.`}
+          : `Right now the most seats together is ${largest}.`}
       </Typography>
     </Stack>
   );
