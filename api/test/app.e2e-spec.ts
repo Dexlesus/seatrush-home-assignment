@@ -48,4 +48,15 @@ describe('App setup (e2e)', () => {
 
     expect(res.text).toContain('swagger');
   });
+
+  it('/docs: switching fan (Authorize / Logout) starts from clean forms, and the login survives the refresh', async () => {
+    const server = t.app.getHttpServer();
+    const page = await request(server).get('/docs').expect(200);
+    const init = await request(server).get('/docs/swagger-ui-init.js').expect(200);
+
+    // Our small script: after Authorize or Logout in the dialog, reload the page.
+    expect(page.text).toContain('seatrush-docs-reset');
+    // Swagger keeps the chosen fan across that reload.
+    expect(init.text).toContain('"persistAuthorization": true');
+  });
 });

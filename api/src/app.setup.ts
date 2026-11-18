@@ -47,5 +47,30 @@ export function configureApp(app: INestApplication): void {
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Username' }, 'fan')
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+  SwaggerModule.setup('docs', app, document, {
+    // Remember the chosen fan in the browser, so a page reload keeps it.
+    swaggerOptions: { persistAuthorization: true },
+    customJsStr: RESET_FORMS_ON_FAN_SWITCH,
+  });
 }
+
+/**
+ * Swagger UI keeps every filled-in form when you switch fan (Authorize /
+ * Logout), which makes it easy to send a request as the wrong fan by mistake.
+ * This reloads /docs right after a switch: the forms start empty, and
+ * persistAuthorization keeps the new fan. Plain browser JavaScript, run only
+ * on the /docs page.
+ */
+const RESET_FORMS_ON_FAN_SWITCH = `
+// seatrush-docs-reset
+document.addEventListener('click', function (event) {
+  var target = event.target;
+  var button = target instanceof Element ? target.closest('.modal-ux button') : null;
+  if (!button) return;
+  var label = (button.textContent || '').trim();
+  if (label === 'Authorize' || label === 'Logout') {
+    // Let Swagger save the new fan first, then start from clean forms.
+    setTimeout(function () { window.location.reload(); }, 300);
+  }
+});
+`;
