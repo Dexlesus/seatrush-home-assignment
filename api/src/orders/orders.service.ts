@@ -76,6 +76,31 @@ export class OrdersService {
       [holdId],
     );
     const hold = rows[0] ?? null;
+
+    // Lock the hold's seats in id order (the last lock this request takes).
+    const seats = await manager.query<
+      {
+        id: string;
+        holdId: string | null;
+        status: string;
+        priceAgorot: number;
+      }[]
+    >(
+      `SELECT s.id,
+              s.hold_id      AS "holdId",
+              s.status,
+              z.price_agorot AS "priceAgorot"
+         FROM hold_seats hs
+         JOIN seats s ON s.id = hs.seat_id
+         JOIN zones z ON z.id = s.zone_id
+        WHERE hs.hold_id = $1
+        ORDER BY s.id
+          FOR UPDATE OF s`,
+      [holdId],
+    );
+
+    // The moment of decision: AFTER every lock wait. A checkout that started
+    // before the expiry but got its locks after it is too late (rule 5).
     const now = await this.clock.now(manager);
 
     // Chain of Responsibility: exists → owner → not released → not expired.
@@ -108,28 +133,8 @@ export class OrdersService {
       }
     }
 
-    // Lock the hold's seats in id order, and make sure every one is still
-    // held by THIS hold (defence in depth; expiry was checked above).
-    const seats = await manager.query<
-      {
-        id: string;
-        holdId: string | null;
-        status: string;
-        priceAgorot: number;
-      }[]
-    >(
-      `SELECT s.id,
-              s.hold_id      AS "holdId",
-              s.status,
-              z.price_agorot AS "priceAgorot"
-         FROM hold_seats hs
-         JOIN seats s ON s.id = hs.seat_id
-         JOIN zones z ON z.id = s.zone_id
-        WHERE hs.hold_id = $1
-        ORDER BY s.id
-          FOR UPDATE OF s`,
-      [holdId],
-    );
+    // Every seat must still be held by THIS hold (defence in depth; expiry
+    // was checked above).
     if (seats.some((s) => s.holdId !== holdId || s.status !== 'HELD')) {
       throw new DomainError(
         'HOLD_EXPIRED',

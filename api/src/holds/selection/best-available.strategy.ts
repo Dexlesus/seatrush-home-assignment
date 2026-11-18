@@ -37,7 +37,7 @@ export class BestAvailableStrategy implements SeatSelectionStrategy {
     manager,
     eventId,
     seatsPerRow,
-    now,
+    clock,
     noLoneSeats,
   }: SelectionInput): Promise<string[]> {
     const rows = await manager.query<
@@ -67,6 +67,8 @@ export class BestAvailableStrategy implements SeatSelectionStrategy {
           FOR UPDATE OF s`,
       [eventId, this.request.maxPriceAgorot ?? null, this.request.zone ?? null],
     );
+    // The time AFTER the lock wait decides which holds have run out.
+    const now = await clock();
 
     const block = findBestBlock(
       rows.map((seat) => ({ ...seat, free: isSeatFree(seat, now) })),

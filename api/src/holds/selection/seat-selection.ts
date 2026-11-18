@@ -17,7 +17,8 @@ export interface SelectionInput {
   manager: EntityManager;
   eventId: string;
   seatsPerRow: number;
-  now: Date;
+  /** Reads the database clock. Call it AFTER locking, never before. */
+  clock: () => Promise<Date>;
   /** Extra credit: best available skips blocks that leave a lone seat. */
   noLoneSeats: boolean;
 }

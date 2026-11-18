@@ -91,14 +91,13 @@ export class HoldsService {
     ]);
 
     const event = await this.findEvent(manager, eventId);
-    const now = await this.clock.now(manager);
 
     // Which seats? (best available locks its candidate rows, in id order)
     const requestedLabels = await strategy.chooseSeats({
       manager,
       eventId,
       seatsPerRow: event.seatsPerRow,
-      now,
+      clock: () => this.clock.now(manager),
       noLoneSeats: this.noLoneSeats,
     });
 
@@ -124,6 +123,11 @@ export class HoldsService {
     );
     const requested = new Set(requestedLabels);
     const seats = rowSeats.filter((seat) => requested.has(seat.label));
+
+    // The moment of decision: read the clock AFTER every lock is ours. Any
+    // time spent waiting in line counts neither against the fan's hold
+    // (expiresAt starts now) nor in favour of a hold that ran out meanwhile.
+    const now = await this.clock.now(manager);
 
     const current = await this.countFanSeats(manager, fanId, eventId, now);
 
@@ -185,17 +189,17 @@ export class HoldsService {
       if (!hold) {
         throw new DomainError('HOLD_NOT_FOUND', "We couldn't find this hold.");
       }
-      const now = await this.clock.now(manager);
-      if (decideRelease(hold, fan.id, now) === 'ALREADY_OVER') {
-        return; // expired or released: the seats may already be someone else's
-      }
 
-      // Lock this hold's seats in id order, then free them. Only seats that
-      // still point to THIS hold are touched.
+      // Lock this hold's seats in id order, THEN read the clock (after every
+      // wait). Only seats that still point to THIS hold are touched below.
       await manager.query(
         `SELECT id FROM seats WHERE hold_id = $1 ORDER BY id FOR UPDATE`,
         [holdId],
       );
+      const now = await this.clock.now(manager);
+      if (decideRelease(hold, fan.id, now) === 'ALREADY_OVER') {
+        return; // expired or released: the seats may already be someone else's
+      }
       await manager.query(
         `UPDATE seats
             SET status = 'AVAILABLE', hold_id = NULL, held_until = NULL
