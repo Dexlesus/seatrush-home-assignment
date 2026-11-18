@@ -1,5 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { EnvironmentVariables } from './config/env.validation.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { validationExceptionFactory } from './common/validation/validation-exception.factory.js';
 
@@ -11,6 +13,14 @@ import { validationExceptionFactory } from './common/validation/validation-excep
 export function configureApp(app: INestApplication): void {
   // Every route starts with /api (for example, /api/health). /docs does not.
   app.setGlobalPrefix('api');
+
+  // Only the web app may call the API from a browser on another origin.
+  // (In Docker the web app proxies /api, so this matters only in development.)
+  const env = app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
+  app.enableCors({
+    origin: env.get('CORS_ORIGIN', { infer: true }),
+    exposedHeaders: ['Retry-After', 'Idempotent-Replayed'],
+  });
 
   // Checks every request body against its DTO class.
   app.useGlobalPipes(

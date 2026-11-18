@@ -1,5 +1,6 @@
-import { plainToInstance, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsString,
@@ -53,6 +54,18 @@ export class EnvironmentVariables {
   @Min(1)
   @Max(65535)
   PORT: number = 3000;
+
+  /** Create one demo event, already on sale, when the database has no events. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() === 'true' : value,
+  )
+  @IsBoolean()
+  SEED_DEMO_EVENT: boolean = true;
+
+  /** The web app's address, allowed to call the API from a browser (CORS). */
+  @IsString()
+  @IsNotEmpty()
+  CORS_ORIGIN: string = 'http://localhost:5173';
 }
 
 /**

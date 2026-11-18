@@ -4,6 +4,7 @@ import { DatabaseModule } from '../database/database.module.js';
 import { EventEntity } from './entities/event.entity.js';
 import { SeatEntity } from './entities/seat.entity.js';
 import { ZoneEntity } from './entities/zone.entity.js';
+import { DemoEventSeeder } from './demo-event.seeder.js';
 import { EventsController } from './events.controller.js';
 import { EventsService } from './events.service.js';
 
@@ -14,7 +15,7 @@ import { EventsService } from './events.service.js';
     DatabaseModule,
   ],
   controllers: [EventsController],
-  providers: [EventsService],
+  providers: [EventsService, DemoEventSeeder],
   exports: [EventsService],
 })
 export class EventsModule {}
