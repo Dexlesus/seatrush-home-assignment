@@ -7,8 +7,10 @@ import {
   rowLabel,
   validateZones,
 } from './domain/seat-map.js';
+import { DbClock } from '../database/db-clock.js';
 import type { CreateEventDto } from './dto/create-event.dto.js';
 import type {
+  EventListResponseDto,
   EventResponseDto,
   SeatMapResponseDto,
 } from './dto/event-response.dto.js';
@@ -22,7 +24,30 @@ const SEAT_INSERT_BATCH = 1000;
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly clock: DbClock,
+  ) {}
+
+  /** Rule 2: every event, soonest drop first, with "is the sale open?". */
+  async list(): Promise<EventListResponseDto> {
+    const now = await this.clock.now();
+    const events = await this.dataSource
+      .getRepository(EventEntity)
+      .find({ order: { dropAt: 'ASC' } });
+
+    return {
+      serverNow: now.toISOString(),
+      events: events.map((event) => ({
+        id: event.id,
+        name: event.name,
+        venue: event.venue,
+        startsAt: event.startsAt.toISOString(),
+        dropAt: event.dropAt.toISOString(),
+        saleOpen: isSaleOpen(event, now),
+      })),
+    };
+  }
 
   /** Rule 1: create an event with its zones and every one of its seats. */
   async create(dto: CreateEventDto): Promise<EventResponseDto> {
@@ -88,7 +113,7 @@ export class EventsService {
         );
       }
 
-      return toEventResponse(event, zones);
+      return toEventResponse(event, zones, await this.clock.now(manager));
     });
   }
 
@@ -99,7 +124,7 @@ export class EventsService {
       where: { eventId },
       order: { fromRow: 'ASC' },
     });
-    return toEventResponse(event, zones);
+    return toEventResponse(event, zones, await this.clock.now());
   }
 
   /** Every seat of the event, row by row, with its zone, price and status. */
@@ -131,6 +156,7 @@ export class EventsService {
 
     return {
       eventId,
+      serverNow: (await this.clock.now()).toISOString(),
       seats: rows.map((seat) => ({
         label: seat.label,
         row: rowLabel(seat.rowIndex),
@@ -155,13 +181,21 @@ export class EventsService {
   }
 }
 
+/** Rule 2: the sale is open from the drop time on (by the database clock). */
+function isSaleOpen(event: EventEntity, now: Date): boolean {
+  return now.getTime() >= event.dropAt.getTime();
+}
+
 /** Database rows → the JSON the API sends. Rows go back to letters. */
 function toEventResponse(
   event: EventEntity,
   zones: ZoneEntity[],
+  now: Date,
 ): EventResponseDto {
   return {
     id: event.id,
+    saleOpen: isSaleOpen(event, now),
+    serverNow: now.toISOString(),
     name: event.name,
     venue: event.venue,
     startsAt: event.startsAt.toISOString(),

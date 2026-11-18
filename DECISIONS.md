@@ -32,6 +32,16 @@ A living document: every stage adds to it. The sections follow the brief.
   - Errors list every field with its full path, for example `zones.0.priceAgorot`.
 - **Docs:** interactive docs at `/docs`, OpenAPI JSON at `/docs-json`. API routes live under `/api`.
 
+- **Hold checks use Chain of Responsibility** (`src/holds/checks/`).
+  - Every rule that can refuse a hold is one small `HoldCheck` link: the sale is open, 1–4 seats, the seats exist, they are free, the per-fan limit.
+  - The data the checks need is loaded first (inside the transaction, after the locks) into a `HoldContext`. The checks themselves are pure, so each one is unit tested on its own.
+  - A new rule (like "no lone seats") is one new link; the other links don't change.
+- **One clock: the database's `now()`** (`DbClock`).
+  - The drop time and hold expiry are decided by it, so several API copies with drifting machine clocks still agree.
+  - Responses carry `serverNow` so the screen counts down from the server's time, not the fan's computer clock.
+- **Rule 2:** holding before `dropAt` → **403 `SALE_NOT_OPEN`** with `opensAt` and `secondsLeft`. The sale is open from exactly `dropAt` on (`now >= dropAt`).
+  - Viewing (`GET /api/events`, `/api/events/:id`, `/api/events/:id/seats`) needs no login, before and after the drop.
+
 ## Infrastructure
 - `docker compose up` works on a fresh clone **without a `.env` file**, because every variable has a default (`${VAR:-default}`). The brief says "no manual steps".
 - PostgreSQL is published on host port **55432**, not 5432, so it doesn't clash with a PostgreSQL that is already installed or running for another project.

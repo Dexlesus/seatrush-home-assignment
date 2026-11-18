@@ -15,9 +15,54 @@ export class ZoneResponseDto {
   priceAgorot: number;
 }
 
+/** What the events list shows for each event. */
+export class EventSummaryDto {
+  @ApiProperty({ example: '7f3a2c9e-1b4d-4c8a-9e2f-0a1b2c3d4e5f' })
+  id: string;
+
+  @ApiProperty({ example: 'Coldplay' })
+  name: string;
+
+  @ApiProperty({ example: 'Bloomfield Stadium' })
+  venue: string;
+
+  @ApiProperty({ example: '2026-12-01T20:00:00.000Z' })
+  startsAt: string;
+
+  @ApiProperty({ example: '2026-11-20T10:00:00.000Z' })
+  dropAt: string;
+
+  @ApiProperty({
+    example: false,
+    description: 'True once dropAt has passed (by the server clock).',
+  })
+  saleOpen: boolean;
+}
+
+export class EventListResponseDto {
+  @ApiProperty({
+    example: '2026-11-18T09:56:00.000Z',
+    description:
+      "The server's clock. Count down from this, not from the fan's own clock.",
+  })
+  serverNow: string;
+
+  @ApiProperty({ type: [EventSummaryDto], description: 'Soonest drop first.' })
+  events: EventSummaryDto[];
+}
+
 export class EventResponseDto {
   @ApiProperty({ example: '7f3a2c9e-1b4d-4c8a-9e2f-0a1b2c3d4e5f' })
   id: string;
+
+  @ApiProperty({
+    example: false,
+    description: 'True once dropAt has passed (by the server clock).',
+  })
+  saleOpen: boolean;
+
+  @ApiProperty({ example: '2026-11-18T09:56:00.000Z' })
+  serverNow: string;
 
   @ApiProperty({ example: 'Coldplay' })
   name: string;
@@ -64,6 +109,9 @@ export class SeatResponseDto {
 export class SeatMapResponseDto {
   @ApiProperty({ example: '7f3a2c9e-1b4d-4c8a-9e2f-0a1b2c3d4e5f' })
   eventId: string;
+
+  @ApiProperty({ example: '2026-11-18T09:56:00.000Z' })
+  serverNow: string;
 
   @ApiProperty({
     type: [SeatResponseDto],

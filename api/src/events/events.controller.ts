@@ -17,6 +17,7 @@ import {
 import { ErrorResponseDto } from '../common/errors/error-response.dto.js';
 import { CreateEventDto } from './dto/create-event.dto.js';
 import {
+  EventListResponseDto,
   EventResponseDto,
   SeatMapResponseDto,
 } from './dto/event-response.dto.js';
@@ -45,6 +46,17 @@ export class EventsController {
   })
   create(@Body() dto: CreateEventDto): Promise<EventResponseDto> {
     return this.events.create(dto);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'List events, soonest drop first',
+    description:
+      'Anyone can view. Each event says whether its sale is open; serverNow is for countdowns.',
+  })
+  @ApiOkResponse({ type: EventListResponseDto })
+  list(): Promise<EventListResponseDto> {
+    return this.events.list();
   }
 
   @Get(':id')
