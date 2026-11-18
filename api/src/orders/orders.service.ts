@@ -14,6 +14,7 @@ import {
 import { checkoutChain } from './checks/checkout-checks.js';
 import type { HoldToCheckOut } from './checks/checkout-context.js';
 import { orderTotal } from './checks/order-total.js';
+import { applyPromo, findPromoCode } from './promo/promo-codes.js';
 import type { MyOrdersResponseDto, OrderResponseDto } from './dto/order.dto.js';
 
 /** Rule 8: checkout (no real payment) and "My tickets". */
@@ -35,13 +36,19 @@ export class OrdersService {
   checkout(
     fan: FanEntity,
     holdId: string,
+    promoCode: string | undefined,
     idempotencyKey: string | undefined,
   ): Promise<IdempotentOutcome<OrderResponseDto>> {
     return this.idempotency.run({
       fanId: fan.id,
       key: idempotencyKey,
-      fingerprint: requestFingerprint({ action: 'checkout', holdId }),
-      work: (manager) => this.checkoutInTransaction(manager, fan.id, holdId),
+      fingerprint: requestFingerprint({
+        action: 'checkout',
+        holdId,
+        promoCode: promoCode?.trim().toUpperCase() ?? null,
+      }),
+      work: (manager) =>
+        this.checkoutInTransaction(manager, fan.id, holdId, promoCode),
     });
   }
 
@@ -49,7 +56,14 @@ export class OrdersService {
     manager: EntityManager,
     fanId: string,
     holdId: string,
+    promoCode: string | undefined,
   ): Promise<{ status: number; body: OrderResponseDto }> {
+    // Lock the fan first (the same first lock as a hold request): one fan's
+    // checkouts run one at a time, so WELCOME20 can't be used twice at once.
+    await manager.query('SELECT id FROM fans WHERE id = $1 FOR UPDATE', [
+      fanId,
+    ]);
+
     // Lock the hold: parallel checkouts of the same hold run one at a time.
     const rows = await manager.query<HoldToCheckOut[]>(
       `SELECT id,
@@ -76,6 +90,22 @@ export class OrdersService {
         status: 200,
         body: await this.describeOrder(manager, { holdId }),
       };
+    }
+
+    // Extra credit: the promo code (Strategy: each code computes its discount).
+    const promo = promoCode ? findPromoCode(promoCode) : null;
+    if (promo?.oncePerFan) {
+      const used = await manager.query<unknown[]>(
+        'SELECT 1 FROM orders WHERE fan_id = $1 AND promo_code = $2',
+        [fanId, promo.code],
+      );
+      if (used.length > 0) {
+        throw new DomainError(
+          'PROMO_CODE_USED',
+          `You already used ${promo.code} on an earlier order. It works once per fan; you can check out without it.`,
+          { promoCode: promo.code },
+        );
+      }
     }
 
     // Lock the hold's seats in id order, and make sure every one is still
@@ -107,11 +137,14 @@ export class OrdersService {
       );
     }
 
+    const subtotal = orderTotal(seats);
+    const { discountAgorot, totalAgorot } = applyPromo(subtotal, promo);
     const orders = await manager.query<{ id: string }[]>(
-      `INSERT INTO orders (hold_id, fan_id, event_id, total_agorot)
-       SELECT id, fan_id, event_id, $2 FROM holds WHERE id = $1
+      `INSERT INTO orders (hold_id, fan_id, event_id,
+                           subtotal_agorot, promo_code, discount_agorot, total_agorot)
+       SELECT id, fan_id, event_id, $2, $3, $4, $5 FROM holds WHERE id = $1
        RETURNING id`,
-      [holdId, orderTotal(seats)],
+      [holdId, subtotal, promo?.code ?? null, discountAgorot, totalAgorot],
     );
     const orderId = orders[0]?.id;
     if (!orderId) {
@@ -167,6 +200,9 @@ export class OrdersService {
         eventName: string;
         venue: string;
         startsAt: Date;
+        subtotalAgorot: number;
+        promoCode: string | null;
+        discountAgorot: number;
         totalAgorot: number;
         createdAt: Date;
         holdStatus: HoldStatus;
@@ -179,7 +215,10 @@ export class OrdersService {
               e.name         AS "eventName",
               e.venue,
               e.starts_at    AS "startsAt",
-              o.total_agorot AS "totalAgorot",
+              o.subtotal_agorot AS "subtotalAgorot",
+              o.promo_code      AS "promoCode",
+              o.discount_agorot AS "discountAgorot",
+              o.total_agorot    AS "totalAgorot",
               o.created_at   AS "createdAt"
          FROM orders o
          JOIN events e ON e.id = o.event_id
@@ -209,6 +248,9 @@ export class OrdersService {
       venue: order.venue,
       startsAt: order.startsAt.toISOString(),
       seats,
+      subtotalAgorot: order.subtotalAgorot,
+      promoCode: order.promoCode,
+      discountAgorot: order.discountAgorot,
       totalAgorot: order.totalAgorot,
       createdAt: order.createdAt.toISOString(),
     };

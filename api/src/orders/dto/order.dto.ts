@@ -1,4 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
+
+/** POST /api/holds/:holdId/checkout body. Empty body = no promo code. */
+export class CheckoutRequestDto {
+  @ApiPropertyOptional({
+    example: 'SAVE10',
+    description:
+      'One promo code per order: SAVE10 (10% off) or WELCOME20 (₪20 off, once per fan ever). Any letter case.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  promoCode?: string;
+}
 
 export class OrderSeatDto {
   @ApiProperty({ example: 'B1' })
@@ -36,6 +50,18 @@ export class OrderResponseDto {
   @ApiProperty({
     example: 30000,
     description: 'Sum of the seat prices, in agorot.',
+  })
+  subtotalAgorot: number;
+
+  @ApiProperty({ example: 'SAVE10', nullable: true, type: String })
+  promoCode: string | null;
+
+  @ApiProperty({ example: 3000, description: 'In agorot; 0 without a code.' })
+  discountAgorot: number;
+
+  @ApiProperty({
+    example: 27000,
+    description: 'What the fan pays: subtotal − discount, never below 0.',
   })
   totalAgorot: number;
 

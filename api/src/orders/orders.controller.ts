@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Headers,
@@ -9,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -26,7 +28,11 @@ import { ErrorResponseDto } from '../common/errors/error-response.dto.js';
 import { CurrentFan } from '../fans/current-fan.decorator.js';
 import type { FanEntity } from '../fans/fan.entity.js';
 import { FanGuard } from '../fans/fan.guard.js';
-import { MyOrdersResponseDto, OrderResponseDto } from './dto/order.dto.js';
+import {
+  CheckoutRequestDto,
+  MyOrdersResponseDto,
+  OrderResponseDto,
+} from './dto/order.dto.js';
 import { OrdersService } from './orders.service.js';
 
 @ApiTags('orders')
@@ -60,15 +66,28 @@ export class OrdersController {
     type: ErrorResponseDto,
     description: 'HOLD_NOT_FOUND',
   })
-  @ApiConflictResponse({ type: ErrorResponseDto, description: 'HOLD_RELEASED' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'PROMO_CODE_UNKNOWN or VALIDATION_FAILED',
+  })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: 'HOLD_RELEASED, or PROMO_CODE_USED (WELCOME20 a second time)',
+  })
   @ApiGoneResponse({ type: ErrorResponseDto, description: 'HOLD_EXPIRED' })
   async checkout(
     @Param('holdId', ParseUUIDPipe) holdId: string,
+    @Body() body: CheckoutRequestDto,
     @CurrentFan() fan: FanEntity,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<OrderResponseDto> {
-    const outcome = await this.orders.checkout(fan, holdId, idempotencyKey);
+    const outcome = await this.orders.checkout(
+      fan,
+      holdId,
+      body.promoCode,
+      idempotencyKey,
+    );
     res.status(outcome.status);
     if (outcome.replayed) {
       res.setHeader('Idempotent-Replayed', 'true');

@@ -3,6 +3,7 @@ import { CreateEventsZonesSeats1763424000000 } from './1763424000000-create-even
 import { CreateFans1763424100000 } from './1763424100000-create-fans.js';
 import { CreateHolds1763424200000 } from './1763424200000-create-holds.js';
 import { CreateOrders1763424300000 } from './1763424300000-create-orders.js';
+import { AddPromoCodesToOrders1763424400000 } from './1763424400000-add-promo-codes-to-orders.js';
 
 /**
  * Every migration, oldest first. TypeORM runs the ones the database hasn't
@@ -16,4 +17,5 @@ export const MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateFans1763424100000,
   CreateHolds1763424200000,
   CreateOrders1763424300000,
+  AddPromoCodesToOrders1763424400000,
 ];
