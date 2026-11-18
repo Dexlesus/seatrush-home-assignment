@@ -1,3 +1,4 @@
+import { makeContext } from './__fixtures__/context.js';
 import { chainOf, HoldCheck } from './hold-check.js';
 import type { HoldContext } from './hold-context.js';
 import { SaleOpenCheck } from './sale-open.check.js';
@@ -6,7 +7,10 @@ import { SaleOpenCheck } from './sale-open.check.js';
 const DROP = new Date('2026-11-20T10:00:00.000Z');
 
 function at(time: string): HoldContext {
-  return { now: new Date(`2026-11-20T${time}.000Z`), event: { dropAt: DROP } };
+  return makeContext({
+    now: new Date(`2026-11-20T${time}.000Z`),
+    event: { dropAt: DROP, rowCount: 3, seatsPerRow: 4 },
+  });
 }
 
 /** A checker that only remembers whether it was reached. */

@@ -1,5 +1,5 @@
+import { makeContext } from './__fixtures__/context.js';
 import { chainOf, HoldCheck } from './hold-check.js';
-import type { HoldContext } from './hold-context.js';
 
 /** A test checker: writes its name in a log, and fails if told to. */
 class RecordingCheck extends HoldCheck {
@@ -19,10 +19,7 @@ class RecordingCheck extends HoldCheck {
   }
 }
 
-const anyContext: HoldContext = {
-  now: new Date(),
-  event: { dropAt: new Date() },
-};
+const anyContext = makeContext();
 
 describe('the chain of checks (Chain of Responsibility)', () => {
   it('runs every check, in order, when they all pass', () => {

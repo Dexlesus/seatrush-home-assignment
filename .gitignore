@@ -16,6 +16,9 @@ coverage/
 # Logs
 *.log
 
+# Personal Claude Code permissions (machine-specific)
+.claude/settings.local.json
+
 # OS and editor files
 .DS_Store
 Thumbs.db
