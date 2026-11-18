@@ -36,7 +36,11 @@ describe('createUniqueHandle: name → "dana#4821"', () => {
   });
 
   it('pads small numbers with zeros, so the tag always has 4 digits', async () => {
-    const handle = await createUniqueHandle('Dana', answers(true), () => 0.0042);
+    const handle = await createUniqueHandle(
+      'Dana',
+      answers(true),
+      () => 0.0042,
+    );
 
     expect(handle).toBe('dana#0042');
   });
@@ -60,7 +64,11 @@ describe('createUniqueHandle: name → "dana#4821"', () => {
   });
 
   it('joins the words of a name with "_": "Dana Cohen" → "dana_cohen#..."', async () => {
-    const handle = await createUniqueHandle('Dana Cohen', answers(true), () => 0.1);
+    const handle = await createUniqueHandle(
+      'Dana Cohen',
+      answers(true),
+      () => 0.1,
+    );
 
     expect(handle).toBe('dana_cohen#1000');
   });

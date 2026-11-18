@@ -18,6 +18,12 @@ export const ERROR_STATUS = {
   ZONE_ROW_OUT_OF_RANGE: HttpStatus.BAD_REQUEST,
   ZONE_ROWS_REVERSED: HttpStatus.BAD_REQUEST,
   EVENT_NOT_FOUND: HttpStatus.NOT_FOUND,
+
+  // Fans: identity by handle ("dana#4821"), no passwords.
+  INVALID_NAME: HttpStatus.BAD_REQUEST,
+  FAN_NOT_FOUND: HttpStatus.NOT_FOUND,
+  IDENTITY_REQUIRED: HttpStatus.UNAUTHORIZED,
+  UNKNOWN_FAN: HttpStatus.UNAUTHORIZED,
 } as const satisfies Record<string, HttpStatus>;
 
 /** 'VALIDATION_FAILED' | 'INTERNAL_ERROR' | ...: made from the keys above. */
