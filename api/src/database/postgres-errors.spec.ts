@@ -28,6 +28,14 @@ describe('postgres errors (rule 6): the database is the last line of defence', (
     expect(isRetryableConflict(pgError('40001'))).toBe(true);
   });
 
+  it('recognises "waited too long for a lock" (55P03, lock_timeout) as "try again"', () => {
+    expect(isRetryableConflict(pgError('55P03'))).toBe(true);
+  });
+
+  it('recognises "the query ran too long" (57014, statement_timeout) as "try again"', () => {
+    expect(isRetryableConflict(pgError('57014'))).toBe(true);
+  });
+
   it('does not ask to retry ordinary errors', () => {
     expect(isRetryableConflict(pgError('23505'))).toBe(false);
     expect(isRetryableConflict(new Error('boom'))).toBe(false);

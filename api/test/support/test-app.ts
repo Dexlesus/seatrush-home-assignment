@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import { DataSource } from 'typeorm';
-import { startTestDatabase } from './test-database.js';
+import { startTestDatabase, type TestDatabase } from './test-database.js';
 
 export interface TestApp {
   /** The running app. Pass app.getHttpServer() to supertest. */
@@ -24,7 +24,25 @@ export async function createTestApp(
   env: Record<string, string> = {},
 ): Promise<TestApp> {
   const database = await startTestDatabase();
+  const started = await startApp(database, env);
+  return {
+    ...started,
+    close: async () => {
+      await started.close();
+      await database.stop();
+    },
+  };
+}
 
+/**
+ * Starts one copy of the API on an existing database. Call it several times
+ * with the same database to run several copies, like a real deployment.
+ * `close` stops only this copy; the database stays.
+ */
+export async function startApp(
+  database: TestDatabase,
+  env: Record<string, string> = {},
+): Promise<TestApp> {
   // The config is read when AppModule is first imported, so the settings
   // must be in place BEFORE that import. That's why the imports below are
   // dynamic (await import) and not at the top of the file.
@@ -53,7 +71,6 @@ export async function createTestApp(
     db: app.get(DataSource),
     close: async () => {
       await app.close();
-      await database.stop();
     },
   };
 }

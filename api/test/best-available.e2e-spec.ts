@@ -1,5 +1,5 @@
 import type { App } from 'supertest/types.js';
-import { checkout, createEvent, hold, logIn } from './support/api.js';
+import { checkout, createEvent, hold, logIn, sleep } from './support/api.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
 /** 3 rows × 8 seats. Row A is VIP (₪300), rows B–C are Regular (₪150). */
@@ -117,4 +117,51 @@ describe('Rule 7: best available (e2e)', () => {
 
     expect(res.body.code).toBe('INVALID_HOLD_REQUEST');
   });
+
+  it('a best-available request locks only the row it picks: a hold in another row does not wait for it', async () => {
+    const eventId = await createEvent(server, HALL);
+    const [dana, noa] = await Promise.all(
+      ['Dana', 'Noa'].map((name) => logIn(server, name)),
+    );
+
+    // A slow request (another connection) holds the lock on the LAST seat in
+    // lock order (the highest id), so whoever locks seats in id order waits there.
+    const slow = t.db.createQueryRunner();
+    await slow.connect();
+    await slow.startTransaction();
+    const [last] = await slow.manager.query<{ rowIndex: number }[]>(
+      `SELECT row_index AS "rowIndex" FROM seats WHERE event_id = $1
+        ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+      [eventId],
+    );
+
+    // Dana asks for 2 together. The best block is A4–A5, in the front row.
+    const danas = hold(server, dana ?? '', eventId, {
+      bestAvailable: { count: 2 },
+    }).then((r) => r);
+    await sleep(500); // her request is inside now, taking its locks
+
+    // Noa clicks a seat in a row that is neither Dana's (A) nor the slow seat's.
+    const noaRow = [1, 2].find((row) => row !== last?.rowIndex) ?? 1;
+    const noaSeat = `${'ABC'[noaRow]}1`;
+    const noas = hold(server, noa ?? '', eventId, { seats: [noaSeat] }).then(
+      (r) => r,
+    );
+    const answeredFast = await Promise.race([
+      noas,
+      sleep(2_000).then(() => null),
+    ]);
+
+    await slow.commitTransaction();
+    await slow.release();
+    const [danaRes] = await Promise.all([danas, noas]);
+
+    expect(
+      answeredFast,
+      `Noa waited over 2 s for ${noaSeat}, a row Dana never asked for`,
+    ).not.toBeNull();
+    expect(answeredFast?.status).toBe(201);
+    expect(danaRes.status).toBe(201);
+    expect(labelsOf(danaRes.body)).toEqual(['A4', 'A5']);
+  }, 30_000);
 });
