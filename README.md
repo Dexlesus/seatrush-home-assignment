@@ -106,6 +106,7 @@ Every rule has both kinds of tests:
 | 8 Checkout | `orders/checks/checkout-checks.spec.ts` | `test/checkout.e2e-spec.ts` |
 | Extra: no lone seats | `holds/domain/lone-seats.spec.ts`, `no-lone-seats.check.spec.ts`, `best-available.spec.ts` (**C4–C5**) | `test/lone-seats.e2e-spec.ts` |
 | Extra: promo codes | `orders/promo/promo-codes.spec.ts` (**₪349.35 → ₪314.41**) | `test/promo-codes.e2e-spec.ts` |
+| Production safety | `postgres-errors.spec.ts` (lock / query time limits → retry) | `test/lock-timeout.e2e-spec.ts` (a stuck lock → 503 in 3 s, the seat map still answers), `test/startup.e2e-spec.ts` (3 API copies start at once), `test/clock-under-locks.e2e-spec.ts` |
 
 Other checks: `npm run lint` and `npm run typecheck` in `api/` and `web/`.
 

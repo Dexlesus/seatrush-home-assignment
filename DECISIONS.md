@@ -30,7 +30,7 @@ web (React, :5173)  ──/api──▶  api (NestJS, :3000)  ──SQL──▶
    - The key was seen before → it replays the stored answer (200) or refuses a different body (422).
 5. **Locks, always in this order:**
    1. `SELECT ... FROM fans WHERE id = $1 FOR UPDATE`. One fan's parallel requests queue up (rule 4).
-   2. The strategy picks the seat labels. Best available first locks every candidate seat, ordered by id.
+   2. The strategy picks the seat labels. Best available looks without locks, then locks only the row of the block it picked (see Patterns).
    3. `SELECT ... FROM seats WHERE row_index IN (rows of the requested seats) ORDER BY id FOR UPDATE`. The **whole row** is locked: one request at a time per row (rule 6), and the no-lone-seats check sees neighbours nobody can change.
 6. **Chain of Responsibility:**
    `SaleOpen (2) → SeatCount 1–4 (3) → SeatsExist → FanLimit (4) → SeatsAvailable, all or nothing (3/5/6) → NoLoneSeats (extra)`.
@@ -58,13 +58,15 @@ All SQL uses **parameters** (`$1, $2 ...`): user input is never pasted into SQL 
 | `order_items` | **`UNIQUE (seat_id)`**: a seat can be sold once, enforced by the database even if the code had a bug. |
 | `idempotency_keys` | `PRIMARY KEY (fan_id, key)`, `request_hash`, the stored status and body. |
 
-Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL (`api/src/database/migrations`), run automatically at startup (`migrationsRun`, one transaction each). `synchronize` is off.
+Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL (`api/src/database/migrations`), run automatically at startup, one transaction each. `synchronize` is off.
+- **One API copy at a time** (`database/run-migrations.ts`). TypeORM's own `migrationsRun` has no lock: when 3 copies started on an empty database, 2 of them crashed (`duplicate key ... pg_class_relname_nsp_index`) and only came back on the library's retry. Now every copy first takes a PostgreSQL advisory lock; the first runs the migrations, the others wait and find nothing left. `api/test/startup.e2e-spec.ts` starts 3 copies at once.
 
 ## Double-selling: exactly how it's prevented
 1. **Row locks in a fixed order.**
    - Every hold locks the fan row, then its seats `ORDER BY id`, with `SELECT ... FOR UPDATE`, in **one transaction**.
    - With 50 requests for B7, the first one locks the row. The other 49 wait, and once it commits each of them re-reads B7, sees it HELD, and gets `409 SEAT_TAKEN`.
    - Because every request locks in the same order, two requests can't wait for each other: **no deadlocks**. If PostgreSQL ever reports one anyway (`40P01`), the API answers `503 BUSY_TRY_AGAIN` with `Retry-After` instead of crashing.
+   - **A lock wait has a time limit**: `lock_timeout = 3 s` and `statement_timeout = 10 s` on every connection (`typeorm.config.ts`). PostgreSQL's default is "wait forever": one stuck lock (a slow database, a connection dropped mid-transaction) made every request for that row wait, each holding one of the pool's 10 connections, and after 10 of them even the seat map stopped answering. Now the waiting request gives up after 3 s, nothing is saved, and the fan gets `503 BUSY_TRY_AGAIN` (codes `55P03` / `57014`) and retries with the same key. A normal wait is milliseconds, so the limit is reached only when something is really stuck. `api/test/lock-timeout.e2e-spec.ts` proves both.
 2. **The check and the write happen under the same locks**, so nothing can change in between.
 3. **Database safety nets:** `order_items UNIQUE (seat_id)` and `orders UNIQUE (hold_id)`.
 4. **Checkout** locks the fan row, then the hold row, then its seats in id order, checks that every seat still points to this hold, and only then sells.
@@ -106,7 +108,12 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
   - A new rule is one more link: "no lone seats" was added exactly that way, without touching the other checks.
 - **Strategy** (`holds/selection`): how the seats are chosen.
   - `ExplicitSeatsStrategy` holds the seats the fan clicked.
-  - `BestAvailableStrategy` handles "N together". It locks the candidates, then runs the pure `findBestBlock`.
+  - `BestAvailableStrategy` handles "N together", with the pure `findBestBlock`:
+    1. It **looks** at the seats without locks and finds the best block.
+    2. It **locks only that block's row** and decides again under the lock.
+    3. If the block was taken in between, it rolls back to a savepoint (that releases the row's locks) and looks again.
+    4. After 3 such misses it falls back to locking every candidate in id order: slower, never wrong.
+  - Before, it locked every candidate (the whole hall without filters) on every request, so a hold in any row waited for it. `api/test/best-available.e2e-spec.ts` proves a hold in another row no longer waits, and covers the retry and the fallback.
   - Everything after the choice is shared.
   - Promo codes use the same idea: one class per kind of discount.
 - **Idempotency-Key** (`idempotency/idempotency.service.ts`). It runs in the same transaction as the work, so a failed request never "uses up" its key, and concurrent duplicates wait on the primary key, then replay.
@@ -176,12 +183,12 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
 ## Two short answers
 **What breaks first if 100,000 fans arrive in the first minute?**
 - The **database connection pool and the lock queues**. Every hold is a short transaction that holds a connection while it waits for row locks.
-  - What is locked is wider than one seat: a clicked hold locks the **whole row** (for no-lone-seats), and best available locks **every seat that matches its filters** (often several rows), to choose safely.
-  - So in a rush, requests for the same rows (and every best-available request for the same zone) queue behind each other, the pool runs out, and latency grows until requests time out.
+  - What is locked is wider than one seat: a clicked hold, and best available, lock the **whole row** of their seats (for no-lone-seats).
+  - So in a rush, requests for the same popular rows queue behind each other and latency grows. A stuck wait gives up after 3 s (`lock_timeout`) with "try again", so one bad row can't take the whole pool.
 - Seat-map polling (every fan, every 2 s) adds a heavy read load.
 - Correctness holds: still no double-selling. What suffers is speed.
 - The fixes are a queue or waiting room, a bigger pool with PgBouncer, a cached or pushed seat map, and per-fan rate limits.
 
 **Does the protection still work with 3 copies of the API?**
 - **Yes.** All protection is inside PostgreSQL: row locks, UNIQUE constraints, idempotency keys in a table, and the database clock. Nothing depends on the memory or clock of one API process.
-- Three copies are three more clients of the same database, so the same locks serialize them. The demo seeder is also safe, thanks to a PostgreSQL advisory lock.
+- Three copies are three more clients of the same database, so the same locks serialize them. The migrations and the demo seeder are also safe on a first start, thanks to PostgreSQL advisory locks (proved with 3 copies starting at once).

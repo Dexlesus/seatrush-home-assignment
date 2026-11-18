@@ -92,7 +92,7 @@ export class HoldsService {
 
     const event = await this.findEvent(manager, eventId);
 
-    // Which seats? (best available locks its candidate rows, in id order)
+    // Which seats? (best available locks the row of the block it picks)
     const requestedLabels = await strategy.chooseSeats({
       manager,
       eventId,

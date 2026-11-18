@@ -164,4 +164,63 @@ describe('Rule 7: best available (e2e)', () => {
     expect(danaRes.status).toBe(201);
     expect(labelsOf(danaRes.body)).toEqual(['A4', 'A5']);
   }, 30_000);
+
+  it('if the row it picked fills up while it waits for the lock, it looks again and takes the next row', async () => {
+    const eventId = await createEvent(server, HALL);
+    const dana = await logIn(server, 'Dana');
+
+    // Another request is selling all of row A right now (not committed yet).
+    const seller = t.db.createQueryRunner();
+    await seller.connect();
+    await seller.startTransaction();
+    await seller.query(
+      `UPDATE seats SET status = 'SOLD' WHERE event_id = $1 AND row_index = 0`,
+      [eventId],
+    );
+
+    // Dana still sees row A free, picks A4–A5, and waits for row A's lock.
+    const danas = hold(server, dana, eventId, {
+      bestAvailable: { count: 2 },
+    }).then((r) => r);
+    await sleep(500);
+    await seller.commitTransaction(); // row A is gone
+    await seller.release();
+
+    const res = await danas;
+    expect(res.status).toBe(201);
+    expect(labelsOf(res.body)).toEqual(['B4', 'B5']);
+  }, 30_000);
+
+  it('a very busy hall (her row taken 3 times in a row): it falls back to locking every row, and still finds seats', async () => {
+    const eventId = await createEvent(server, { rowCount: 4, seatsPerRow: 8 });
+    const dana = await logIn(server, 'Dana');
+
+    // Three requests are selling rows A, B and C right now (not committed yet).
+    const sellers = await Promise.all(
+      [0, 1, 2].map(async (rowIndex) => {
+        const seller = t.db.createQueryRunner();
+        await seller.connect();
+        await seller.startTransaction();
+        await seller.query(
+          `UPDATE seats SET status = 'SOLD' WHERE event_id = $1 AND row_index = $2`,
+          [eventId, rowIndex],
+        );
+        return seller;
+      }),
+    );
+
+    const danas = hold(server, dana, eventId, {
+      bestAvailable: { count: 2 },
+    }).then((r) => r);
+    // Each time Dana waits on a row, that row sells out, and she tries the next.
+    for (const seller of sellers) {
+      await sleep(400);
+      await seller.commitTransaction();
+      await seller.release();
+    }
+
+    const res = await danas;
+    expect(res.status).toBe(201);
+    expect(labelsOf(res.body)).toEqual(['D4', 'D5']);
+  }, 30_000);
 });
