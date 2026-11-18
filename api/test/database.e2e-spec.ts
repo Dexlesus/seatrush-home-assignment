@@ -22,9 +22,7 @@ describe('Test database (Testcontainers)', () => {
   });
 
   it('starts a real PostgreSQL 17 that answers queries', async () => {
-    const result = await client.query<{ version: string }>(
-      'select version()',
-    );
+    const result = await client.query<{ version: string }>('select version()');
 
     expect(result.rows[0]?.version).toContain('PostgreSQL 17');
   });

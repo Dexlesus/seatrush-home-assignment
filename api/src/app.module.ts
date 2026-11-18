@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { validateEnv } from './config/env.validation.js';
+import { typeOrmOptions } from './database/typeorm.config.js';
 import { HealthController } from './health/health.controller.js';
 
 @Module({
@@ -12,6 +14,10 @@ import { HealthController } from './health/health.controller.js';
       // first, then in the repo root, where .env.example lives.
       envFilePath: ['.env', '../.env'],
       validate: validateEnv, // fail fast on bad config
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: typeOrmOptions,
     }),
   ],
   controllers: [HealthController],
