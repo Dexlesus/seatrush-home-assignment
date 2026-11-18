@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { validateEnv } from './config/env.validation.js';
 import { typeOrmOptions } from './database/typeorm.config.js';
 import { EventsModule } from './events/events.module.js';
+import { FansModule } from './fans/fans.module.js';
 import { HealthController } from './health/health.controller.js';
 
 @Module({
@@ -21,6 +22,7 @@ import { HealthController } from './health/health.controller.js';
       useFactory: typeOrmOptions,
     }),
     EventsModule,
+    FansModule,
   ],
   controllers: [HealthController],
 })

@@ -32,6 +32,9 @@ export function configureApp(app: INestApplication): void {
       'A fair, fast ticket drop that never sells the same seat twice.',
     )
     .setVersion('1.0')
+    // Fan-only routes need the fan's handle in this header. In /docs, click
+    // "Authorize" and paste a handle from POST /api/session.
+    .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Username' }, 'fan')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
