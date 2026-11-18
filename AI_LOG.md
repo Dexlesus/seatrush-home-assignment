@@ -29,6 +29,20 @@
 - The first `docker compose up` failed: port 5433 was taken by another project's container, and 5432 by a local PostgreSQL. We moved to 55432 and wrote down why.
 - My review: _(I fill this in after the walkthrough)_
 
+### Working style: changed after my feedback
+At first the AI wrote the tests and the code in one go and explained afterwards. I couldn't follow it.
+We changed the process:
+- The AI writes only the tests.
+- **I run them myself in VS Code's Testing panel and see them fail.**
+- Only then does the AI write the code, and I see the tests pass.
+
+I also broke a test on purpose (`'0'` → `'5'`) to see a real failure message.
+
+### Rule 1: seat map
+- Unit tests first: row letters, seat labels, zone validation, seat generation. 14 tests, red then green.
+- Then E2E tests through the real API on a throwaway database: create the event, read the seat map, overlapping zones, invalid fields, unknown event. 5 tests, red (404, because the routes didn't exist yet) then green.
+- The AI proposed requiring every row to be in exactly one zone. I agreed, and it is written as an assumption.
+
 ### Stage 0b: config, errors, docs (TDD)
 - The AI wrote the tests first (commit `test: ... (red)`), ran them, and showed they failed. Then it wrote the code.
 - **The tests caught two real problems in the AI's first version:**

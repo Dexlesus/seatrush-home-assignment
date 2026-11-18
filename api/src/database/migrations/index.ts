@@ -1,4 +1,5 @@
 import type { MigrationInterface } from 'typeorm';
+import { CreateEventsZonesSeats1763424000000 } from './1763424000000-create-events-zones-seats.js';
 
 /**
  * Every migration, oldest first. TypeORM runs the ones the database hasn't
@@ -7,4 +8,6 @@ import type { MigrationInterface } from 'typeorm';
  * Listed by hand (not found by a file pattern) so it works the same in
  * TypeScript tests and in the built JavaScript.
  */
-export const MIGRATIONS: (new () => MigrationInterface)[] = [];
+export const MIGRATIONS: (new () => MigrationInterface)[] = [
+  CreateEventsZonesSeats1763424000000,
+];

@@ -44,9 +44,25 @@ A living document: every stage adds to it. The sections follow the brief.
 - **Safety nets in the schema:** `order_items UNIQUE(seat_id)` and `orders UNIQUE(hold_id)`.
 - **Time comes from the database clock (`now()`).** Expiry needs no cleanup job, and it works with several copies of the API.
 
+## Schema (so far)
+- **`events`**: name, venue, `starts_at`, `drop_at`, `row_count`, `seats_per_row`. The CHECK `drop_at < starts_at` means tickets go on sale before the show.
+- **`zones`**: `event_id`, name, `from_row`, `to_row`, `price_agorot`.
+  - Rows are stored as numbers (A = 0), so they are easy to compare. The API speaks letters.
+  - `price_agorot >= 0`, and zone names are unique per event.
+- **`seats`**: `event_id`, `zone_id`, `row_index`, `seat_number`, `label` ("B7"), status `AVAILABLE | HELD | SOLD`.
+  - `UNIQUE (event_id, label)` and `UNIQUE (event_id, row_index, seat_number)`: one B7 per event.
+  - The first unique index also serves "all seats of an event".
+- **All seats are created up front**, in the same transaction as the event: the event, its zones and its seats are saved together or not at all. This is what lets rule 6 lock real seat rows.
+- **Migrations are hand-written SQL**, listed in `src/database/migrations/index.ts` and run automatically when the app starts (`migrationsRun`), one transaction each. `synchronize` is off: the schema only changes through reviewed migrations.
+
 ## Assumptions
 - **Fan identity.** A fan types a name and gets a unique handle such as `dana#4821`.
   - The tag is 4 random digits. After 5 collisions it switches to 6 digits.
   - Two people named Dana are two different fans.
   - Handles are never released or reused, because a handle owns orders and tickets.
   - This is identification, not authentication: the brief asks for no passwords.
+- **Every row must be in exactly one zone.** Otherwise a seat would have no price, or two prices. A gap, an overlap, a row outside the hall or a reversed range is rejected with its own code (`ZONES_GAP`, `ZONES_OVERLAP`, ...), and all problems are reported at once.
+- **Size limits:** 1–100 rows and 1–100 seats per row (up to 10,000 seats). The brief's example hall has 2,000 seats. After row Z come AA, AB ..., like spreadsheet columns.
+- **Prices are whole agorot** (`priceAgorot`, ₪300 = 30000), never floats, so there are no rounding errors.
+- **Seat labels** are case-insensitive on input (`b7` = `B7`). Seat numbers start at 1, and `B07` is not a valid label.
+- **The drop time must be before the show starts** (`INVALID_EVENT_TIMES`).
