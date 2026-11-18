@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { validateEnv } from './config/env.validation.js';
+import { connectAndMigrate } from './database/run-migrations.js';
 import { typeOrmOptions } from './database/typeorm.config.js';
 import { EventsModule } from './events/events.module.js';
 import { FansModule } from './fans/fans.module.js';
@@ -22,6 +23,8 @@ import { OrdersModule } from './orders/orders.module.js';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: typeOrmOptions,
+      // Connects, then runs the migrations one API copy at a time.
+      dataSourceFactory: connectAndMigrate,
     }),
     EventsModule,
     FansModule,

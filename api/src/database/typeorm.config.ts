@@ -33,9 +33,11 @@ export function typeOrmOptions(
     // `synchronize` could drop a column with real orders in it.
     synchronize: false,
     migrations: MIGRATIONS,
-    // Run new migrations when the app starts, so a fresh clone gets its
-    // tables with no manual step. Each migration runs in its own transaction.
-    migrationsRun: true,
+    // New migrations run when the app starts, so a fresh clone gets its
+    // tables with no manual step. Not through TypeORM's `migrationsRun`: that
+    // has no lock between API copies. connectAndMigrate (run-migrations.ts)
+    // runs them one copy at a time.
+    migrationsRun: false,
     migrationsTransactionMode: 'each',
   };
 }
