@@ -15,6 +15,17 @@ export function typeOrmOptions(
     password: config.get('DB_PASSWORD', { infer: true }),
     database: config.get('DB_NAME', { infer: true }),
 
+    // Time limits for every connection (PostgreSQL's default is "wait forever").
+    // A request waiting for a lock holds one of the pool's 10 connections; if
+    // the lock is stuck, 10 such requests freeze the whole API, even the seat
+    // map. Normally a lock wait is a few milliseconds, so 3 s means "stuck":
+    // the request gives up, frees its connection, and the fan gets
+    // 503 BUSY_TRY_AGAIN (see postgres-errors.ts). Nothing was saved, so the
+    // retry with the same Idempotency-Key is safe.
+    extra: {
+      options: '-c lock_timeout=3000 -c statement_timeout=10000',
+    },
+
     // Entities register themselves through TypeOrmModule.forFeature().
     autoLoadEntities: true,
 

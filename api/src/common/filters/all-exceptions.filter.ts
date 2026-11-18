@@ -70,10 +70,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
-    // 3. PostgreSQL rolled back a transaction to stay consistent (deadlock or
-    //    serialization failure). Nothing was saved: the client may retry.
+    // 3. PostgreSQL stopped a transaction and rolled it back (a deadlock, a
+    //    serialization failure, or a lock wait / query over its time limit).
+    //    Nothing was saved: the client may retry.
     if (isRetryableConflict(exception)) {
-      this.logger.warn('Database asked for a retry (deadlock/serialization)');
+      this.logger.warn(
+        'Database asked for a retry (deadlock, serialization or time limit)',
+      );
       return {
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         code: 'BUSY_TRY_AGAIN',

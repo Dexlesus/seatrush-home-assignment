@@ -32,7 +32,9 @@ export class DemoEventSeeder implements OnApplicationBootstrap {
 
     await this.dataSource.transaction(async (manager) => {
       // If several API copies start at once, only one seeds: the others wait
-      // for this lock, then see that an event already exists.
+      // for this lock, then see that an event already exists. Waiting here is
+      // expected, so this transaction gets a longer lock limit than requests.
+      await manager.query(`SET LOCAL lock_timeout = '30s'`);
       await manager.query('SELECT pg_advisory_xact_lock(424242)');
       const rows = await manager.query<{ count: string }[]>(
         'SELECT count(*) FROM events',
