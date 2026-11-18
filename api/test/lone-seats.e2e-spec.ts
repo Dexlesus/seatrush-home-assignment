@@ -95,7 +95,7 @@ describe('Extra credit: no lone seats (e2e, NO_LONE_SEATS=true)', () => {
       hold(server, noa, eventId, { seats: ['A3'] }),
     ]);
 
-    const statuses = results.map((r) => r.status).sort();
+    const statuses = results.map((r) => r.status).sort((a, b) => a - b);
     expect(statuses).toEqual([201, 409]);
     const loser = results.find((r) => r.status === 409);
     expect(loser?.body.code).toBe('LONE_SEAT');

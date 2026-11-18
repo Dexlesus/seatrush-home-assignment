@@ -93,11 +93,17 @@ export function release(server: App, handle: string, holdId: string) {
     .set('X-Username', handle);
 }
 
-/** POST /api/holds/:id/checkout as `handle`. */
-export function checkout(server: App, handle: string, holdId: string) {
+/** POST /api/holds/:id/checkout as `handle`, optionally with a promo code. */
+export function checkout(
+  server: App,
+  handle: string,
+  holdId: string,
+  body: { promoCode?: string } = {},
+) {
   return request(server)
     .post(`/api/holds/${holdId}/checkout`)
-    .set('X-Username', handle);
+    .set('X-Username', handle)
+    .send(body);
 }
 
 /** The seat map as { "A1": "AVAILABLE", "B2": "HELD", ... }. */
