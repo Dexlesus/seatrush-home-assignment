@@ -1,4 +1,5 @@
 import {
+  alpha,
   Alert,
   Box,
   Button,
@@ -14,7 +15,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { baseApi } from '../../api/baseApi';
 import { useLogInMutation } from '../../api/seatrushApi';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
+import { TicketIcon } from '../../components/icons';
 import { friendlyError } from '../../lib/errors';
+import { TOKENS } from '../../theme';
 import { signedIn } from './sessionSlice';
 
 /**
@@ -48,11 +51,30 @@ export function LoginPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 480, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 480, mx: 'auto', mt: { md: 4 } }}>
       <Card>
-        <CardContent>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Stack spacing={2} component="form" onSubmit={onSubmit}>
-            <Typography variant="h5">Who's buying?</Typography>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 3,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: alpha(TOKENS.emerald, 0.15),
+                  border: 1,
+                  borderColor: alpha(TOKENS.emerald, 0.3),
+                  color: 'primary.main',
+                }}
+              >
+                <TicketIcon />
+              </Box>
+              <Typography variant="h5" component="h1">
+                Who's buying?
+              </Typography>
+            </Stack>
             <Typography color="text.secondary">
               No password needed. Type your name and you get a handle like{' '}
               <b>dana#4821</b>. Two people called Dana get two different handles.
@@ -90,6 +112,7 @@ export function LoginPage() {
                 <Chip
                   key={fan.handle}
                   label={fan.handle}
+                  variant={fan.handle === current?.handle ? 'filled' : 'outlined'}
                   color={fan.handle === current?.handle ? 'primary' : 'default'}
                   onClick={() => void enter(fan.handle).catch(() => undefined)}
                   disabled={isLoading}

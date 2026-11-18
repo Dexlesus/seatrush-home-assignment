@@ -13,6 +13,8 @@ import {
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useCreateEventMutation } from '../../api/seatrushApi';
+import { CalendarIcon, XIcon } from '../../components/icons';
+import { TOKENS } from '../../theme';
 import { friendlyError } from '../../lib/errors';
 import {
   defaultDraft,
@@ -67,13 +69,31 @@ export function AdminPage() {
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4">Create an event</Typography>
-        <Typography color="text.secondary">
-          Admin screen. Rows go from A (nearest the stage) to {lastRow}; every row must be in
-          exactly one price zone.
-        </Typography>
-      </Box>
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            flexShrink: 0,
+            borderRadius: 3,
+            display: 'grid',
+            placeItems: 'center',
+            background: TOKENS.poster,
+            boxShadow: TOKENS.glow(TOKENS.cyan, 0.3),
+          }}
+        >
+          <CalendarIcon sx={{ color: 'common.white' }} />
+        </Box>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Create an event
+          </Typography>
+          <Typography color="text.secondary">
+            Admin screen. Rows go from A (nearest the stage) to {lastRow}; every row must be in
+            exactly one price zone.
+          </Typography>
+        </Box>
+      </Stack>
 
       {created ? (
         <Alert
@@ -210,7 +230,7 @@ export function AdminPage() {
                     )
                   }
                 >
-                  ✕
+                  <XIcon />
                 </IconButton>
               </Stack>
             ))}

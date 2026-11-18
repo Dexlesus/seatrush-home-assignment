@@ -1,8 +1,10 @@
-import { Alert, AlertTitle, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
+import { alpha, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import type { Hold } from '../../../api/types';
+import { ClockIcon } from '../../../components/icons';
 import { formatAgorot } from '../../../lib/money';
 import { formatCountdown, holdPhase, minutesMessage, type HoldPhase } from '../../../lib/time';
+import { TOKENS } from '../../../theme';
 
 interface Props {
   hold: Hold;
@@ -15,73 +17,109 @@ interface Props {
   onHoldAgain: () => void;
 }
 
-const SEVERITY: Record<HoldPhase, 'info' | 'warning' | 'error'> = {
-  calm: 'info',
-  warning: 'warning', // orange from 1:00
-  urgent: 'error', // red from 0:30
-  expired: 'error',
+/** calm → orange at 1:00 → red at 0:30. */
+const PHASE_COLOR: Record<HoldPhase, string> = {
+  calm: TOKENS.cyan,
+  warning: TOKENS.amber,
+  urgent: TOKENS.rose,
+  expired: TOKENS.rose,
 };
 
-/** The hold: a live countdown that changes colour, the seats, and checkout. */
+/** The hold, in the bottom bar: a live countdown that changes colour, the seats, and checkout. */
 export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain }: Props) {
   const [promoCode, setPromoCode] = useState('');
   const msLeft = Date.parse(hold.expiresAt) - now;
   const totalMs = Date.parse(hold.expiresAt) - Date.parse(hold.createdAt);
   const phase = holdPhase(msLeft);
   const expired = phase === 'expired';
+  const color = PHASE_COLOR[phase];
 
   return (
-    <Stack spacing={2}>
-      <Alert severity={SEVERITY[phase]} variant={phase === 'calm' ? 'standard' : 'filled'}>
-        <AlertTitle>{expired ? 'Your hold ran out' : 'Your seats are held'}</AlertTitle>
-        {expired ? (
-          'The seats went back on sale. Try again: they might still be free.'
-        ) : (
-          <Stack direction="row" spacing={2} sx={{ alignItems: 'baseline' }}>
-            <Typography
-              variant="h4"
-              component="span"
-              sx={{ fontVariantNumeric: 'tabular-nums' }}
-              aria-live="off"
-            >
-              {formatCountdown(msLeft)}
+    <Stack
+      direction={{ xs: 'column', md: 'row' }}
+      spacing={2}
+      sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between', width: '100%' }}
+    >
+      {/* The countdown */}
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{
+          alignItems: 'center',
+          px: 2,
+          py: 1,
+          borderRadius: 4,
+          border: 1,
+          borderColor: alpha(color, 0.5),
+          bgcolor: alpha(color, phase === 'calm' ? 0.08 : 0.18),
+          boxShadow: phase === 'calm' ? 'none' : TOKENS.glow(color, 0.45),
+          transition: 'all 0.4s',
+        }}
+      >
+        <ClockIcon sx={{ color }} />
+        <Box>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color }}>
+            {expired ? 'Your hold ran out' : 'Your seats are held'}
+          </Typography>
+          {expired ? (
+            <Typography variant="caption" color="text.secondary">
+              The seats went back on sale. They might still be free.
             </Typography>
-            {/* Changes once a minute, so screen readers hear it calmly. */}
-            <Typography component="span" aria-live="polite">
-              {minutesMessage(msLeft, totalMs)}
-            </Typography>
-          </Stack>
-        )}
-      </Alert>
+          ) : (
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline' }}>
+              <Typography
+                component="span"
+                aria-live="off"
+                sx={{ fontSize: 26, fontWeight: 900, lineHeight: 1.1, color, fontVariantNumeric: 'tabular-nums' }}
+              >
+                {formatCountdown(msLeft)}
+              </Typography>
+              {/* Changes once a minute, so screen readers hear it calmly. */}
+              <Typography component="span" variant="caption" color="text.secondary" aria-live="polite">
+                {minutesMessage(msLeft, totalMs)}
+              </Typography>
+            </Stack>
+          )}
+        </Box>
+      </Stack>
 
-      <Box>
-        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
-          {hold.seats.map((seat) => (
-            <Chip
-              key={seat.label}
-              color={expired ? 'default' : 'success'}
-              label={`${seat.label} · ${seat.zone} · ${formatAgorot(seat.priceAgorot)}`}
-            />
-          ))}
-        </Stack>
-        <Typography>
-          Total <b>{formatAgorot(hold.totalAgorot)}</b>
+      {/* The seats and the total */}
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1, flexGrow: 1 }}>
+        {hold.seats.map((seat) => (
+          <Chip
+            key={seat.label}
+            label={`${seat.label} · ${seat.zone} · ${formatAgorot(seat.priceAgorot)}`}
+            sx={{
+              bgcolor: expired ? 'transparent' : alpha(TOKENS.mine, 0.15),
+              border: 1,
+              borderColor: expired ? 'divider' : alpha(TOKENS.mine, 0.45),
+              color: expired ? 'text.disabled' : 'info.main',
+            }}
+          />
+        ))}
+        <Typography sx={{ ml: 1 }}>
+          <Typography component="span" variant="caption" color="text.secondary">
+            Total{' '}
+          </Typography>
+          <Typography component="span" sx={{ fontSize: 22, fontWeight: 900 }}>
+            {formatAgorot(hold.totalAgorot)}
+          </Typography>
         </Typography>
-      </Box>
+      </Stack>
 
+      {/* Actions */}
       {expired ? (
-        <Button variant="contained" onClick={onHoldAgain} disabled={busy}>
+        <Button variant="contained" size="large" onClick={onHoldAgain} disabled={busy}>
           Try to hold them again
         </Button>
       ) : (
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <TextField
             label="Promo code"
             size="small"
             value={promoCode}
             onChange={(e) => setPromoCode(e.target.value)}
             placeholder="SAVE10"
-            helperText="Optional"
             slotProps={{ htmlInput: { maxLength: 32 } }}
             sx={{ width: 130 }}
           />
@@ -90,11 +128,11 @@ export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain 
             size="large"
             onClick={() => onCheckout(promoCode.trim() || undefined)}
             disabled={busy}
-            sx={{ flexGrow: 1, alignSelf: 'flex-start' }}
+            sx={{ px: 3 }}
           >
             {busy ? 'Working…' : 'Checkout'}
           </Button>
-          <Button onClick={onRelease} disabled={busy} sx={{ alignSelf: 'flex-start' }}>
+          <Button onClick={onRelease} disabled={busy} color="inherit" sx={{ color: 'text.secondary' }}>
             Release
           </Button>
         </Stack>

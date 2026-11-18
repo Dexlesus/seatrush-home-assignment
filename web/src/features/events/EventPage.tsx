@@ -1,18 +1,21 @@
 import {
+  alpha,
   Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
-  Divider,
-  Grid,
+  Container,
+  Dialog,
+  DialogContent,
+  IconButton,
   LinearProgress,
   Skeleton,
   Stack,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import {
   newIdempotencyKey,
@@ -24,13 +27,24 @@ import {
   useMyOrdersQuery,
   useReleaseHoldMutation,
 } from '../../api/seatrushApi';
-import type { Hold, HoldBody, Order } from '../../api/types';
+import type { EventDetails, Hold, HoldBody, Order } from '../../api/types';
 import { useAppSelector } from '../../app/hooks';
+import {
+  ArmchairIcon,
+  CalendarIcon,
+  CheckIcon,
+  ClockIcon,
+  MapPinIcon,
+  SparklesIcon,
+  XIcon,
+} from '../../components/icons';
+import { TicketStub } from '../../components/TicketStub';
 import { errorCode, friendlyError, joinSeats } from '../../lib/errors';
 import { formatAgorot } from '../../lib/money';
 import { seatsLeftToPick } from '../../lib/seats';
 import { formatCountdown, useServerNow } from '../../lib/time';
 import { useSlow } from '../../lib/useSlow';
+import { TOKENS } from '../../theme';
 import { BestAvailablePanel } from './components/BestAvailablePanel';
 import { HoldPanel } from './components/HoldPanel';
 import { SeatMap } from './components/SeatMap';
@@ -88,7 +102,7 @@ export function EventPage() {
   }
 
   if (eventQuery.isLoading || seatsQuery.isLoading) {
-    return <Skeleton variant="rounded" height={420} />;
+    return <Skeleton variant="rounded" height={420} sx={{ borderRadius: 6 }} />;
   }
   if (eventQuery.error || !eventQuery.data || !seatsQuery.data) {
     return (
@@ -120,9 +134,8 @@ export function EventPage() {
   );
   const picked = selected.filter((label) => free.has(label));
   const lost = selected.filter((label) => !free.has(label));
-  const pickedTotal = seatMap.seats
-    .filter((s) => picked.includes(s.label))
-    .reduce((sum, s) => sum + s.priceAgorot, 0);
+  const pickedSeats = seatMap.seats.filter((s) => picked.includes(s.label));
+  const pickedTotal = pickedSeats.reduce((sum, s) => sum + s.priceAgorot, 0);
 
   // Rule 4 on screen: what the fan already has for this event (bought + held
   // and not expired) decides how many more seats they may pick.
@@ -222,155 +235,330 @@ export function EventPage() {
     }
   }
 
+  /** What the bottom bar shows, by where the fan is in the flow. */
+  function barContent(): ReactNode {
+    if (!fan) {
+      return (
+        <BarRow left={<Typography color="text.secondary">Pick a username to hold seats. No password needed.</Typography>}>
+          <Button variant="contained" size="large" component={RouterLink} to={loginLink}>
+            Pick a username to hold seats
+          </Button>
+        </BarRow>
+      );
+    }
+    if (hold) {
+      return (
+        <HoldPanel
+          hold={hold}
+          now={now}
+          busy={busy}
+          onCheckout={(promoCode) => void doCheckout(promoCode)}
+          onRelease={() => void doRelease()}
+          onHoldAgain={() => void doHold({ seats: hold.seats.map((s) => s.label) })}
+        />
+      );
+    }
+    if (atLimit) {
+      return (
+        <BarRow
+          left={
+            <Typography sx={{ color: 'primary.main', fontWeight: 600 }}>
+              You have {bought + held} seats for this show, the most one fan can have. 🎟️
+            </Typography>
+          }
+        >
+          <Button variant="contained" component={RouterLink} to="/tickets">
+            My tickets
+          </Button>
+        </BarRow>
+      );
+    }
+    return (
+      <BarRow
+        left={
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', color: 'text.secondary' }}>
+              <ArmchairIcon sx={{ color: 'primary.main' }} />
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Selected ({picked.length}):
+              </Typography>
+            </Stack>
+            {picked.length === 0 ? (
+              <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                Click up to {canPick} seat{canPick === 1 ? '' : 's'} on the map.
+                {bought + held > 0 ? ` You already have ${bought + held} for this show.` : ''}
+              </Typography>
+            ) : (
+              pickedSeats.map((seat) => (
+                <Chip
+                  key={seat.label}
+                  label={`Row ${seat.row} · Seat ${seat.seatNumber} (${formatAgorot(seat.priceAgorot)})`}
+                  onDelete={() => toggle(seat.label)}
+                  deleteIcon={<XIcon aria-label={`Remove ${seat.label}`} />}
+                  sx={{
+                    bgcolor: alpha(TOKENS.emerald, 0.15),
+                    border: 1,
+                    borderColor: alpha(TOKENS.emerald, 0.4),
+                    color: 'primary.main',
+                  }}
+                />
+              ))
+            )}
+          </Stack>
+        }
+      >
+        <Stack direction="row" spacing={2.5} sx={{ alignItems: 'center' }}>
+          <Box sx={{ textAlign: 'right' }}>
+            <Typography variant="caption" color="text.secondary">
+              {saleOpen ? 'Total' : 'Tickets drop in'}
+            </Typography>
+            <Typography sx={{ fontSize: 24, fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+              {saleOpen ? formatAgorot(pickedTotal) : formatCountdown(msToDrop)}
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="large"
+            disabled={!saleOpen || busy || picked.length === 0}
+            onClick={() => void doHold({ seats: picked })}
+            sx={{ px: 3, py: 1.5 }}
+          >
+            Hold {picked.length || ''} seat{picked.length === 1 ? '' : 's'}
+          </Button>
+        </Stack>
+      </BarRow>
+    );
+  }
+
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4">{event.name}</Typography>
-        <Typography color="text.secondary">
-          {event.venue} · {new Date(event.startsAt).toLocaleString()}
-        </Typography>
+    <>
+      <Stack spacing={3} sx={{ pb: { xs: 30, md: 16 } }}>
+        <EventHeader event={event} saleOpen={saleOpen} msToDrop={msToDrop}>
+          {fan && saleOpen && !hold && !atLimit ? (
+            <BestAvailablePanel
+              seats={seatMap.seats}
+              zones={event.zones}
+              maxCount={canPick}
+              disabled={busy}
+              onFind={(body) => void doHold(body)}
+            />
+          ) : null}
+        </EventHeader>
+
+        {busy ? <LinearProgress sx={{ borderRadius: 1 }} /> : null}
+        {slow ? (
+          <Alert severity="info">
+            Still working: the server is busy. Don't refresh. You won't be booked twice.
+          </Alert>
+        ) : null}
+        {!saleOpen ? (
+          <Alert severity="warning" icon={<ClockIcon />}>
+            Tickets drop in{' '}
+            <b style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCountdown(msToDrop)}</b>. Stay
+            here: the buttons unlock by themselves.
+          </Alert>
+        ) : null}
+        {lost.length > 0 && !hold ? (
+          <Alert severity="warning" onClose={() => setSelected(picked)}>
+            Someone just took {joinSeats(lost)}, so it's no longer in your selection.
+          </Alert>
+        ) : null}
+        {notice ? (
+          <Alert
+            severity={notice.severity}
+            onClose={() => setNotice(null)}
+            action={
+              notice.retry ? (
+                <Button color="inherit" onClick={notice.retry}>
+                  Try again
+                </Button>
+              ) : undefined
+            }
+          >
+            {notice.text}
+          </Alert>
+        ) : null}
+
+        <Card>
+          <CardContent sx={{ px: { xs: 1, sm: 3 }, py: 3 }}>
+            <SeatMap seats={seatMap.seats} zones={event.zones} selected={picked} mine={mine} onToggle={toggle} />
+          </CardContent>
+        </Card>
+      </Stack>
+
+      {/* The bottom bar: always in view, like a cinema booking page. */}
+      <Box
+        sx={{
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 30,
+          borderTop: 1,
+          borderColor: alpha(TOKENS.slate[800], 0.9),
+          bgcolor: alpha(TOKENS.slate[950], 0.85),
+          backdropFilter: 'blur(24px)',
+          boxShadow: `0 -10px 40px ${alpha(TOKENS.slate[950], 0.75)}`,
+        }}
+      >
+        <Container maxWidth="lg" sx={{ py: 1.75 }}>
+          {barContent()}
+        </Container>
       </Box>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Card>
-            <CardContent>
-              <SeatMap
-                seats={seatMap.seats}
-                zones={event.zones}
-                selected={picked}
-                mine={mine}
-                onToggle={toggle}
-              />
-            </CardContent>
-          </Card>
-        </Grid>
+      <OrderDialog order={order} onClose={() => setOrder(null)} />
+    </>
+  );
+}
 
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Card>
-            <CardContent>
-              <Stack spacing={2}>
-                {!saleOpen ? (
-                  <Alert severity="warning">
-                    Tickets drop in{' '}
-                    <b style={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCountdown(msToDrop)}
-                    </b>
-                    . Stay here: the buttons unlock by themselves.
-                  </Alert>
-                ) : (
-                  <Chip label="On sale now" color="success" sx={{ alignSelf: 'flex-start' }} />
-                )}
-
-                {busy ? <LinearProgress /> : null}
-                {slow ? (
-                  <Alert severity="info">
-                    Still working: the server is busy. Don't refresh. You won't be booked twice.
-                  </Alert>
-                ) : null}
-
-                {lost.length > 0 && !hold ? (
-                  <Alert severity="warning" onClose={() => setSelected(picked)}>
-                    Someone just took {joinSeats(lost)}, so it's no longer in your
-                    selection.
-                  </Alert>
-                ) : null}
-
-                {notice ? (
-                  <Alert
-                    severity={notice.severity}
-                    onClose={() => setNotice(null)}
-                    action={
-                      notice.retry ? (
-                        <Button color="inherit" onClick={notice.retry}>
-                          Try again
-                        </Button>
-                      ) : undefined
-                    }
-                  >
-                    {notice.text}
-                  </Alert>
-                ) : null}
-
-                {order ? (
-                  <Alert
-                    severity="success"
-                    action={
-                      <Button color="inherit" component={RouterLink} to="/tickets">
-                        My tickets
-                      </Button>
-                    }
-                  >
-                    You're going! 🎉 {joinSeats(order.seats.map((s) => s.label))} ·{' '}
-                    {formatAgorot(order.totalAgorot)}
-                    {order.promoCode
-                      ? ` (${order.promoCode} saved you ${formatAgorot(order.discountAgorot)})`
-                      : ''}
-                  </Alert>
-                ) : null}
-
-                {!fan ? (
-                  <Button variant="contained" component={RouterLink} to={loginLink}>
-                    Pick a username to hold seats
-                  </Button>
-                ) : hold ? (
-                  <HoldPanel
-                    hold={hold}
-                    now={now}
-                    busy={busy}
-                    onCheckout={(promoCode) => void doCheckout(promoCode)}
-                    onRelease={() => void doRelease()}
-                    onHoldAgain={() => void doHold({ seats: hold.seats.map((s) => s.label) })}
-                  />
-                ) : atLimit ? (
-                  <Alert
-                    severity="success"
-                    action={
-                      <Button color="inherit" component={RouterLink} to="/tickets">
-                        My tickets
-                      </Button>
-                    }
-                  >
-                    You have {bought + held} seats for this show, the most one fan can have. 🎟️
-                  </Alert>
-                ) : (
-                  <>
-                    <Typography variant="subtitle1">Your selection</Typography>
-                    {picked.length === 0 ? (
-                      <Typography color="text.secondary">
-                        Click up to {canPick} seat{canPick === 1 ? '' : 's'} on the map.
-                        {bought + held > 0
-                          ? ` You already have ${bought + held} for this show.`
-                          : ''}
-                      </Typography>
-                    ) : (
-                      <Typography>
-                        {joinSeats(picked)} · <b>{formatAgorot(pickedTotal)}</b>
-                      </Typography>
-                    )}
-                    <Button
-                      variant="contained"
-                      size="large"
-                      disabled={!saleOpen || busy || picked.length === 0}
-                      onClick={() => void doHold({ seats: picked })}
-                    >
-                      Hold {picked.length || ''} seat{picked.length === 1 ? '' : 's'}
-                    </Button>
-                    <Divider>or</Divider>
-                    <BestAvailablePanel
-                      seats={seatMap.seats}
-                      zones={event.zones}
-                      maxCount={canPick}
-                      disabled={!saleOpen || busy}
-                      onFind={(body) => void doHold(body)}
-                    />
-                  </>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+/** Left: information. Right: the action. Stacked on phones. */
+function BarRow({ left, children }: { left: ReactNode; children: ReactNode }) {
+  return (
+    <Stack
+      direction={{ xs: 'column', md: 'row' }}
+      spacing={2}
+      sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
+    >
+      <Box sx={{ minWidth: 0 }}>{left}</Box>
+      {children}
     </Stack>
+  );
+}
+
+/** The top of the page: a poster tile, the show's details, and the "best available" toolbar. */
+function EventHeader({
+  event,
+  saleOpen,
+  msToDrop,
+  children,
+}: {
+  event: EventDetails;
+  saleOpen: boolean;
+  msToDrop: number;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ justifyContent: 'space-between', alignItems: { lg: 'center' } }}>
+          <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+            <Box
+              sx={{
+                width: 56,
+                height: 78,
+                flexShrink: 0,
+                borderRadius: 3,
+                p: '1px',
+                background: TOKENS.poster,
+                boxShadow: TOKENS.glow(TOKENS.cyan, 0.25),
+              }}
+            >
+              <Box sx={{ width: '100%', height: '100%', borderRadius: 2.75, bgcolor: alpha(TOKENS.slate[950], 0.8), display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+                <Box>
+                  <SparklesIcon sx={{ fontSize: 20, color: 'secondary.main' }} />
+                  <Typography sx={{ fontSize: 8, fontWeight: 800, letterSpacing: '0.12em', color: 'secondary.light' }}>
+                    LIVE
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+            <Box>
+              <Stack direction="row" spacing={1} sx={{ mb: 0.5 }}>
+                {saleOpen ? (
+                  <Chip
+                    size="small"
+                    label="On sale now"
+                    sx={{
+                      bgcolor: alpha(TOKENS.emerald, 0.15),
+                      color: 'primary.main',
+                      border: 1,
+                      borderColor: alpha(TOKENS.emerald, 0.35),
+                      boxShadow: TOKENS.glow(TOKENS.emerald, 0.3),
+                    }}
+                  />
+                ) : (
+                  <Chip
+                    size="small"
+                    label={`Drops in ${formatCountdown(msToDrop)}`}
+                    sx={{
+                      bgcolor: alpha(TOKENS.amber, 0.15),
+                      color: 'warning.main',
+                      border: 1,
+                      borderColor: alpha(TOKENS.amber, 0.3),
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  />
+                )}
+                <Chip size="small" label={`${event.rowCount} rows × ${event.seatsPerRow} seats`} sx={{ bgcolor: TOKENS.slate[800] }} />
+              </Stack>
+              <Typography variant="h4" component="h1" sx={{ fontSize: { xs: 22, sm: 28 } }}>
+                {event.name}
+              </Typography>
+              <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 2, rowGap: 0.5, mt: 0.5, color: 'text.secondary' }}>
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                  <MapPinIcon sx={{ fontSize: 15, color: 'secondary.main' }} />
+                  <Typography variant="body2">{event.venue}</Typography>
+                </Stack>
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                  <CalendarIcon sx={{ fontSize: 15, color: 'primary.main' }} />
+                  <Typography variant="body2">{new Date(event.startsAt).toLocaleString()}</Typography>
+                </Stack>
+              </Stack>
+            </Box>
+          </Stack>
+          {children}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** After checkout: a big "you're going", and the ticket. */
+function OrderDialog({ order, onClose }: { order: Order | null; onClose: () => void }) {
+  return (
+    <Dialog open={order !== null} onClose={onClose} maxWidth="sm" fullWidth aria-labelledby="order-title">
+      {order ? (
+        <DialogContent sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', position: 'relative' }}>
+          <IconButton aria-label="Close" onClick={onClose} sx={{ position: 'absolute', top: 12, right: 12 }}>
+            <XIcon />
+          </IconButton>
+          <Box
+            sx={{
+              width: 56,
+              height: 56,
+              mx: 'auto',
+              mb: 2,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: alpha(TOKENS.emerald, 0.2),
+              border: 1,
+              borderColor: alpha(TOKENS.emerald, 0.4),
+              color: 'primary.main',
+            }}
+          >
+            <CheckIcon sx={{ fontSize: 32 }} />
+          </Box>
+          <Typography id="order-title" variant="h5" sx={{ fontWeight: 900 }}>
+            You're going! 🎉
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {joinSeats(order.seats.map((s) => s.label))} · {formatAgorot(order.totalAgorot)}
+            {order.promoCode ? ` (${order.promoCode} saved you ${formatAgorot(order.discountAgorot)})` : ''}
+          </Typography>
+          <Box sx={{ textAlign: 'left', mb: 3 }}>
+            <TicketStub order={order} />
+          </Box>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button variant="contained" size="large" fullWidth component={RouterLink} to="/tickets">
+              My tickets
+            </Button>
+            <Button size="large" fullWidth onClick={onClose} sx={{ bgcolor: TOKENS.slate[800], color: 'text.primary' }}>
+              Back to the seat map
+            </Button>
+          </Stack>
+        </DialogContent>
+      ) : null}
+    </Dialog>
   );
 }

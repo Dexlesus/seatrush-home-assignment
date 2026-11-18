@@ -1,20 +1,11 @@
-import {
-  Alert,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Skeleton,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Grid, Skeleton, Stack, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { useMyOrdersQuery } from '../../api/seatrushApi';
 import { useAppSelector } from '../../app/hooks';
+import { TicketStub } from '../../components/TicketStub';
 import { friendlyError } from '../../lib/errors';
-import { formatAgorot } from '../../lib/money';
 
-/** My tickets: every order of the current fan, newest first. */
+/** My tickets: every order of the current fan, newest first, as e-tickets. */
 export function TicketsPage() {
   const fan = useAppSelector((state) => state.session.current);
   const { data, error, isLoading, refetch } = useMyOrdersQuery(undefined, {
@@ -36,7 +27,7 @@ export function TicketsPage() {
     );
   }
   if (isLoading) {
-    return <Skeleton variant="rounded" height={160} />;
+    return <Skeleton variant="rounded" height={220} sx={{ borderRadius: 6 }} />;
   }
   if (error) {
     return (
@@ -63,40 +54,25 @@ export function TicketsPage() {
     );
   }
 
+  const seats = data.orders.reduce((sum, o) => sum + o.seats.length, 0);
   return (
-    <Stack spacing={2}>
-      <Typography variant="h4">My tickets</Typography>
-      {data.orders.map((order) => (
-        <Card key={order.orderId}>
-          <CardContent>
-            <Stack spacing={1}>
-              <Typography variant="h6">{order.eventName}</Typography>
-              <Typography color="text.secondary">
-                {order.venue} · {new Date(order.startsAt).toLocaleString()}
-              </Typography>
-              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                {order.seats.map((seat) => (
-                  <Chip
-                    key={seat.label}
-                    label={`${seat.label} · ${seat.zone} · ${formatAgorot(seat.priceAgorot)}`}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ))}
-              </Stack>
-              <Typography>
-                Total <b>{formatAgorot(order.totalAgorot)}</b>
-                {order.promoCode
-                  ? ` (${formatAgorot(order.subtotalAgorot)} − ${formatAgorot(order.discountAgorot)} with ${order.promoCode})`
-                  : ''}{' '}
-                · Order{' '}
-                <code>{order.orderId.slice(0, 8)}</code> · Bought{' '}
-                {new Date(order.createdAt).toLocaleString()}
-              </Typography>
-            </Stack>
-          </CardContent>
-        </Card>
-      ))}
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="h4" component="h1">
+          My tickets
+        </Typography>
+        <Typography color="text.secondary">
+          {data.orders.length} order{data.orders.length === 1 ? '' : 's'} · {seats} seat
+          {seats === 1 ? '' : 's'}, newest first.
+        </Typography>
+      </Box>
+      <Grid container spacing={2.5}>
+        {data.orders.map((order) => (
+          <Grid key={order.orderId} size={{ xs: 12, md: 6 }}>
+            <TicketStub order={order} />
+          </Grid>
+        ))}
+      </Grid>
     </Stack>
   );
 }
