@@ -146,7 +146,12 @@ export class EventsService {
               s.seat_number  AS "seatNumber",
               z.name         AS zone,
               z.price_agorot AS "priceAgorot",
-              s.status
+              -- Rule 5: a hold that has run out shows as AVAILABLE at once,
+              -- decided by the database clock. No cleanup job is needed.
+              CASE WHEN s.status = 'HELD' AND s.held_until <= now()
+                   THEN 'AVAILABLE'
+                   ELSE s.status
+              END            AS status
          FROM seats s
          JOIN zones z ON z.id = s.zone_id
         WHERE s.event_id = $1

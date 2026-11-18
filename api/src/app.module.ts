@@ -6,6 +6,8 @@ import { typeOrmOptions } from './database/typeorm.config.js';
 import { EventsModule } from './events/events.module.js';
 import { FansModule } from './fans/fans.module.js';
 import { HealthController } from './health/health.controller.js';
+import { HoldsModule } from './holds/holds.module.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { HealthController } from './health/health.controller.js';
     }),
     EventsModule,
     FansModule,
+    HoldsModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
 })

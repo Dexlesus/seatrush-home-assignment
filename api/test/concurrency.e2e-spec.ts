@@ -109,7 +109,7 @@ describe('Rule 6: never sell a seat twice, under real concurrency (e2e)', () => 
     expect(holdIds.size).toBe(1);
   }, 60_000);
 
-  it('20 fans ask for "2 together" at once: nobody gets a seat twice', async () => {
+  it('20 fans ask for "2 together" at once: every winner gets different seats', async () => {
     const eventId = await createEvent(server, { rowCount: 5, seatsPerRow: 8 });
     const fans = await logInMany(server, 20);
 
@@ -119,11 +119,20 @@ describe('Rule 6: never sell a seat twice, under real concurrency (e2e)', () => 
       ),
     );
 
-    expect(countStatuses(responses)).toEqual({ 201: 20 });
-    const labels = responses.flatMap((r) =>
-      (r.body.seats as { label: string }[]).map((s) => s.label),
-    );
-    expect(new Set(labels).size).toBe(40); // 20 × 2 different seats
+    // Each row of 8 fits only 3 pairs: the most central pair first (4–5),
+    // then 2–3, then 6–7, which leaves seats 1 and 8 alone. 5 rows × 3 = 15
+    // winners; the other 5 fans correctly get NO_SEATS_TOGETHER.
+    expect(countStatuses(responses)).toEqual({ 201: 15, 409: 5 });
+    const losers = responses.filter((r) => r.status === 409);
+    expect(losers.every((r) => r.body.code === 'NO_SEATS_TOGETHER')).toBe(true);
+
+    const labels = responses
+      .filter((r) => r.status === 201)
+      .flatMap((r) =>
+        (r.body.seats as { label: string }[]).map((s) => s.label),
+      );
+    expect(labels).toHaveLength(30);
+    expect(new Set(labels).size).toBe(30); // no seat was given twice
   }, 60_000);
 
   it('10 checkouts of the same hold at once create exactly one order', async () => {
