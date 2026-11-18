@@ -42,6 +42,23 @@ My mentor ran a second review. I didn't accept its list as is: for each point, a
 - **Not a bug: double click.** A screen test with a fake server double-clicks "Hold" and counts the requests: 1. To be sure the test can catch the bug, I removed the "disabled while busy" guard for a moment: it went red with 2 requests.
 - **Docs were wrong:** DECISIONS said `now()` was "now" inside a transaction, and said only single seats are locked. Both are corrected.
 
+### A production-readiness audit (AI review, then test first)
+- I asked the AI to review the project for production bugs and give me a table: the risk of each finding, the checks it needs, whether a test is easy, and its importance from 1 to 5. It found 11 findings, none critical.
+- I asked for every finding rated 3 or more to be fixed, each with a test that proves the bug first.
+  - **No time limit on lock waits (4).**
+    - **The red test:** a second connection holds a fan's lock and never lets go. The fan's hold got no answer for 8 s. With 12 such holds, even the seat map stopped answering, because they used up all 10 database connections.
+    - **The fix:** `lock_timeout` 3 s and `statement_timeout` 10 s. The stuck hold now gets `503` in 3 s, and the retry with the same key works.
+    - **Before the fix, I asked:** if `FOR UPDATE` locks the row, how can 10 requests reach it at all? The answer, that a lock makes others *wait* rather than rejecting them, is now in the README's *What I learned*.
+  - **Migrations from several API copies (3).**
+    - **The red test:** start 3 copies at once on an empty database. 2 of them crashed (`duplicate key … pg_class_relname_nsp_index`).
+    - **The AI's first claim was too strong.** It said a crashed copy "stays down". The test showed that `@nestjs/typeorm` retries after 3 s and the copy comes up. The crash is real; the damage was smaller than claimed.
+    - **The fix:** an advisory lock around the migrations.
+  - **"Best available" locked the whole hall (3).**
+    - **The red test:** a hold in a different row waited more than 2 s for a best-available request.
+    - **The fix:** look without locks, lock only the chosen row, and use a savepoint to let go of that row and try again if the block was taken in between.
+    - **Before relying on the savepoint,** the AI checked in PostgreSQL that rolling back to a savepoint really releases row locks, with a control run that showed the lock is kept without it. One more test makes sure the fallback path is really reached.
+- **The final manual run found one more thing:** with the API stopped, nginx waited about 38 s. `proxy_connect_timeout 3s` brought it down to 3 s.
+
 ### Environment surprises
 - **Port collision:** the first `docker compose up` failed. Port 5433 was taken by another project's container, and 5432 by a local PostgreSQL. We moved to **55432**, and the reason is written in DECISIONS (a reviewer's machine can look the same).
 - **NestJS 12 defaults:** the generated project used Vitest and oxlint instead of Jest and ESLint, and ESM imports. We kept the new defaults.
