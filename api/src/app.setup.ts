@@ -48,8 +48,13 @@ export function configureApp(app: INestApplication): void {
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document, {
-    // Remember the chosen fan in the browser, so a page reload keeps it.
-    swaggerOptions: { persistAuthorization: true },
+    swaggerOptions: {
+      // Remember the chosen fan in the browser, so a page reload keeps it.
+      persistAuthorization: true,
+      // Don't put the open endpoint in the address (#/holds/...): after a
+      // fan switch the page must not reopen anything.
+      deepLinking: false,
+    },
     customJsStr: RESET_FORMS_ON_FAN_SWITCH,
   });
 }
@@ -69,8 +74,11 @@ document.addEventListener('click', function (event) {
   if (!button) return;
   var label = (button.textContent || '').trim();
   if (label === 'Authorize' || label === 'Logout') {
-    // Let Swagger save the new fan first, then start from clean forms.
-    setTimeout(function () { window.location.reload(); }, 300);
+    // Let Swagger save the new fan first, then load /docs again from scratch:
+    // no "#..." in the address, nothing open, back at the top of the page.
+    setTimeout(function () {
+      window.location.replace(window.location.pathname);
+    }, 300);
   }
 });
 `;

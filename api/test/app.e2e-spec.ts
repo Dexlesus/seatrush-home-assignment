@@ -56,7 +56,9 @@ describe('App setup (e2e)', () => {
 
     // Our small script: after Authorize or Logout in the dialog, reload the page.
     expect(page.text).toContain('seatrush-docs-reset');
-    // Swagger keeps the chosen fan across that reload.
+    // Swagger keeps the chosen fan across that reload...
     expect(init.text).toContain('"persistAuthorization": true');
+    // ...but nothing else: no "#/holds/..." in the address that reopens a form.
+    expect(init.text).toContain('"deepLinking": false');
   });
 });
