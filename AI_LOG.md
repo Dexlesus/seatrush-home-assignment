@@ -34,6 +34,14 @@
 - **A race the first idea missed.** Locking only the requested seats is not enough for no-lone-seats: two fans taking A1 and A3 at the same moment would together leave A2 alone. The fix is to lock the whole row, and there's an E2E test that sends exactly that race.
 - **Found by the manual tests.** Writing check 20 (API down), we found that nginx answers with an HTML 502 page. The screen would say "Something went wrong" instead of "We can't reach the server", and without a "Try again" button. Fixed with a test first.
 
+### A second review (another AI tool), checked point by point
+My mentor ran a second review. I didn't accept its list as is: for each point, a test had to show the bug first.
+- **Real bug: checkout after the expiry.** PostgreSQL's `now()` is the start of the transaction. A test holds the fan's lock from a second connection, starts a checkout before the expiry, and lets it go after: the old code answered **201 and created an order for an expired hold**. Fixed by reading `clock_timestamp()` after all locks. The test now gets 410.
+- **Real bug: a waiting hold lost its waiting time.** The same kind of test showed a hold that waited 1.5 s expired 1.5 s early. Fixed the same way.
+- **Not a bug: replaying an expired hold.** The test passed on the first run: the replay returns the same (expired) hold and never takes the seats back from the new holder. Kept as a test.
+- **Not a bug: double click.** A screen test with a fake server double-clicks "Hold" and counts the requests: 1. To be sure the test can catch the bug, I removed the "disabled while busy" guard for a moment: it went red with 2 requests.
+- **Docs were wrong:** DECISIONS said `now()` was "now" inside a transaction, and said only single seats are locked. Both are corrected.
+
 ### Environment surprises
 - **Port collision:** the first `docker compose up` failed. Port 5433 was taken by another project's container, and 5432 by a local PostgreSQL. We moved to **55432**, and the reason is written in DECISIONS (a reviewer's machine can look the same).
 - **NestJS 12 defaults:** the generated project used Vitest and oxlint instead of Jest and ESLint, and ESM imports. We kept the new defaults.

@@ -80,10 +80,10 @@ Docker must be running: the E2E tests start their own throwaway PostgreSQL with 
 ```bash
 cd api && npm ci
 npm test            # unit tests (121): rules logic, chains, strategies, errors, config
-npm run test:e2e    # E2E tests (72) against real PostgreSQL 17, rules 1–8, concurrency, extra credit
+npm run test:e2e    # E2E tests (77) against real PostgreSQL 17, rules 1–8, concurrency, lock waits, extra credit
 
 cd ../web && npm ci
-npm test            # web helper tests (27): friendly errors, countdowns, seats together, money, admin form
+npm test            # web tests (36): a screen test (double click = one hold) + helpers: errors, countdowns, seats, money, admin form
 ```
 
 **Against the running stack** (after `docker compose up`):
@@ -127,4 +127,4 @@ AI_LOG.md            how AI was used, and what I checked, changed or rejected
 - **No lone seats is off by default** (see the env table): with it off, "best available" can leave single seats at the row ends.
 - **Promo codes are fixed in code** (`orders/promo/promo-codes.ts`), not managed from the admin screen.
 - **The admin screen has no login**, like the API it calls (the brief: "no login, no roles").
-- **Web tests cover the pure helpers.** There are no component or browser tests; [MANUAL_TESTS.md](MANUAL_TESTS.md) covers the screens by hand.
+- **Web tests are mostly the pure helpers**, plus one screen test of the event page (double click = one hold) with a fake server. There are no real-browser tests; [MANUAL_TESTS.md](MANUAL_TESTS.md) covers the screens by hand.

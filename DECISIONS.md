@@ -84,7 +84,9 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
 - Rule 4 counts only holds with `expires_at > now()`.
 - Releasing or checking out an old, expired hold never touches seats another fan has held since: only seats whose `hold_id` is still this hold are changed.
 
-**One clock:** "now" is always PostgreSQL's `now()` (`DbClock`), never the API machine's clock, so several API copies agree. Responses include `serverNow`, so the screen's countdowns don't trust the fan's computer clock.
+**One clock:** "now" is always PostgreSQL's clock (`DbClock`), never the API machine's clock, so several API copies agree. Responses include `serverNow`, so the screen's countdowns don't trust the fan's computer clock.
+
+**Read AFTER the locks, with `clock_timestamp()`.** Inside a transaction, PostgreSQL's `now()` is frozen at the moment the transaction *started*. A checkout that started 1 s before the expiry but waited 3 s for a lock would decide with a time 3 s old and sell an expired hold; a hold that waited in line would lose its waiting time. So every service takes all its locks first, then reads `clock_timestamp()` (the real time at that moment) and decides with it: `expiresAt` starts then, and checkout compares with it. `api/test/clock-under-locks.e2e-spec.ts` holds a lock from a second connection to prove both cases.
 
 ## Extra credit
 - **No lone seats** (`NO_LONE_SEATS=true`).
@@ -173,7 +175,9 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
 
 ## Two short answers
 **What breaks first if 100,000 fans arrive in the first minute?**
-- The **database connection pool and the per-seat lock queues**. Every hold is a short transaction that holds a connection while it waits for row locks. With thousands of requests for the same hot seats, requests queue on those locks, the pool runs out, and latency grows until requests time out.
+- The **database connection pool and the lock queues**. Every hold is a short transaction that holds a connection while it waits for row locks.
+  - What is locked is wider than one seat: a clicked hold locks the **whole row** (for no-lone-seats), and best available locks **every seat that matches its filters** (often several rows), to choose safely.
+  - So in a rush, requests for the same rows (and every best-available request for the same zone) queue behind each other, the pool runs out, and latency grows until requests time out.
 - Seat-map polling (every fan, every 2 s) adds a heavy read load.
 - Correctness holds: still no double-selling. What suffers is speed.
 - The fixes are a queue or waiting room, a bigger pool with PgBouncer, a cached or pushed seat map, and per-fan rate limits.
