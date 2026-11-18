@@ -23,6 +23,9 @@ const EventPage = lazy(() =>
 const LoginPage = lazy(() =>
   import('./features/session/LoginPage').then((m) => ({ default: m.LoginPage })),
 );
+const AdminPage = lazy(() =>
+  import('./features/admin/AdminPage').then((m) => ({ default: m.AdminPage })),
+);
 const TicketsPage = lazy(() =>
   import('./features/tickets/TicketsPage').then((m) => ({ default: m.TicketsPage })),
 );
@@ -49,6 +52,9 @@ export function App() {
           </Button>
           <Button color="inherit" component={RouterLink} to="/tickets">
             My tickets
+          </Button>
+          <Button color="inherit" component={RouterLink} to="/admin">
+            Admin
           </Button>
           <Box sx={{ flexGrow: 1 }} />
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -78,6 +84,7 @@ export function App() {
             <Route path="/events" element={<EventsPage />} />
             <Route path="/events/:eventId" element={<EventPage />} />
             <Route path="/tickets" element={<TicketsPage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<Navigate to="/events" replace />} />
           </Routes>
         </Suspense>

@@ -80,8 +80,23 @@ export interface Order {
   venue: string;
   startsAt: string;
   seats: HeldSeat[];
+  /** Sum of the seat prices. */
+  subtotalAgorot: number;
+  promoCode: string | null;
+  discountAgorot: number;
+  /** What the fan paid: subtotal − discount. */
   totalAgorot: number;
   createdAt: string;
+}
+
+export interface CreateEventBody {
+  name: string;
+  venue: string;
+  startsAt: string;
+  dropAt: string;
+  rowCount: number;
+  seatsPerRow: number;
+  zones: Zone[];
 }
 
 export interface HoldBody {

@@ -150,11 +150,16 @@ export function EventPage() {
     }
   }
 
-  async function doCheckout(idempotencyKey = newIdempotencyKey()) {
+  async function doCheckout(promoCode?: string, idempotencyKey = newIdempotencyKey()) {
     if (!hold) return;
     setNotice(null);
     try {
-      const result = await checkout({ holdId: hold.holdId, eventId, idempotencyKey }).unwrap();
+      const result = await checkout({
+        holdId: hold.holdId,
+        eventId,
+        promoCode,
+        idempotencyKey,
+      }).unwrap();
       setOrder(result);
       closeHold(hold.holdId);
     } catch (error) {
@@ -164,7 +169,7 @@ export function EventPage() {
         text: friendlyError(error),
         retry:
           code === null || code === 'BUSY_TRY_AGAIN'
-            ? () => void doCheckout(idempotencyKey)
+            ? () => void doCheckout(promoCode, idempotencyKey)
             : undefined,
       });
     }
@@ -262,6 +267,9 @@ export function EventPage() {
                   >
                     You're going! 🎉 {joinSeats(order.seats.map((s) => s.label))} ·{' '}
                     {formatAgorot(order.totalAgorot)}
+                    {order.promoCode
+                      ? ` (${order.promoCode} saved you ${formatAgorot(order.discountAgorot)})`
+                      : ''}
                   </Alert>
                 ) : null}
 
@@ -274,7 +282,7 @@ export function EventPage() {
                     hold={hold}
                     now={now}
                     busy={busy}
-                    onCheckout={() => void doCheckout()}
+                    onCheckout={(promoCode) => void doCheckout(promoCode)}
                     onRelease={() => void doRelease()}
                     onHoldAgain={() => void doHold({ seats: hold.seats.map((s) => s.label) })}
                   />

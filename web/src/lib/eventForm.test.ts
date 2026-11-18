@@ -52,7 +52,7 @@ describe('the admin "create event" form', () => {
       venue: 'Park',
       rowCount: '0',
       dropAt: draft.startsAt, // the drop must be BEFORE the show
-      zones: [{ name: 'All', fromRow: 'a', toRow: 'e', price: 'free' }],
+      zones: [{ key: 1, name: 'All', fromRow: 'a', toRow: 'e', price: 'free' }],
     });
 
     expect(body).toBeUndefined();

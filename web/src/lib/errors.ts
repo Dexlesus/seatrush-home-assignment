@@ -78,6 +78,12 @@ export function friendlyError(error: AnyError): string {
       return `Seat ${joinSeats(details.seats)} doesn't exist in this venue.`;
     case 'NO_SEATS_TOGETHER':
       return `No ${String(details.count ?? '')} seats together right now. Try fewer seats, or remove a filter.`;
+    case 'LONE_SEAT':
+      return `That would leave ${joinSeats(details.seats)} on its own, and a single seat is hard to sell. Add it, or pick seats that leave 2 or more together.`;
+    case 'PROMO_CODE_UNKNOWN':
+      return `"${String(details.promoCode ?? '')}" isn't a code we know. Check the spelling, or check out without it.`;
+    case 'PROMO_CODE_USED':
+      return `You already used ${String(details.promoCode ?? 'this code')} on an earlier order. Remove it and check out, or try SAVE10.`;
     case 'HOLD_EXPIRED':
       return 'Your hold ran out and the seats went back on sale. Try again; they might still be free.';
     case 'HOLD_RELEASED':

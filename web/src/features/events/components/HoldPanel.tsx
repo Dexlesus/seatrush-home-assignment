@@ -1,4 +1,5 @@
-import { Alert, AlertTitle, Box, Button, Chip, Stack, Typography } from '@mui/material';
+import { Alert, AlertTitle, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
+import { useState } from 'react';
 import type { Hold } from '../../../api/types';
 import { formatAgorot } from '../../../lib/money';
 import { formatCountdown, holdPhase, minutesMessage, type HoldPhase } from '../../../lib/time';
@@ -8,7 +9,8 @@ interface Props {
   /** "Now" by the server clock. */
   now: number;
   busy: boolean;
-  onCheckout: () => void;
+  /** Extra credit: one promo code per order (SAVE10, WELCOME20). */
+  onCheckout: (promoCode?: string) => void;
   onRelease: () => void;
   onHoldAgain: () => void;
 }
@@ -22,6 +24,7 @@ const SEVERITY: Record<HoldPhase, 'info' | 'warning' | 'error'> = {
 
 /** The hold: a live countdown that changes colour, the seats, and checkout. */
 export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain }: Props) {
+  const [promoCode, setPromoCode] = useState('');
   const msLeft = Date.parse(hold.expiresAt) - now;
   const totalMs = Date.parse(hold.expiresAt) - Date.parse(hold.createdAt);
   const phase = holdPhase(msLeft);
@@ -72,10 +75,26 @@ export function HoldPanel({ hold, now, busy, onCheckout, onRelease, onHoldAgain 
         </Button>
       ) : (
         <Stack direction="row" spacing={1}>
-          <Button variant="contained" size="large" onClick={onCheckout} disabled={busy} sx={{ flexGrow: 1 }}>
+          <TextField
+            label="Promo code"
+            size="small"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value)}
+            placeholder="SAVE10"
+            helperText="Optional"
+            slotProps={{ htmlInput: { maxLength: 32 } }}
+            sx={{ width: 130 }}
+          />
+          <Button
+            variant="contained"
+            size="large"
+            onClick={() => onCheckout(promoCode.trim() || undefined)}
+            disabled={busy}
+            sx={{ flexGrow: 1, alignSelf: 'flex-start' }}
+          >
             {busy ? 'Working…' : 'Checkout'}
           </Button>
-          <Button onClick={onRelease} disabled={busy}>
+          <Button onClick={onRelease} disabled={busy} sx={{ alignSelf: 'flex-start' }}>
             Release
           </Button>
         </Stack>

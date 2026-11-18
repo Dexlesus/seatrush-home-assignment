@@ -85,7 +85,11 @@ export function TicketsPage() {
                 ))}
               </Stack>
               <Typography>
-                Total <b>{formatAgorot(order.totalAgorot)}</b> · Order{' '}
+                Total <b>{formatAgorot(order.totalAgorot)}</b>
+                {order.promoCode
+                  ? ` (${formatAgorot(order.subtotalAgorot)} − ${formatAgorot(order.discountAgorot)} with ${order.promoCode})`
+                  : ''}{' '}
+                · Order{' '}
                 <code>{order.orderId.slice(0, 8)}</code> · Bought{' '}
                 {new Date(order.createdAt).toLocaleString()}
               </Typography>

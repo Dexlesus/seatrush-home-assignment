@@ -1,5 +1,6 @@
 import { baseApi } from './baseApi';
 import type {
+  CreateEventBody,
   EventDetails,
   EventList,
   Fan,
@@ -64,11 +65,12 @@ export const seatrushApi = baseApi.injectEndpoints({
 
     checkout: build.mutation<
       Order,
-      { holdId: string; eventId: string; idempotencyKey: string }
+      { holdId: string; eventId: string; promoCode?: string; idempotencyKey: string }
     >({
-      query: ({ holdId, idempotencyKey }) => ({
+      query: ({ holdId, promoCode, idempotencyKey }) => ({
         url: `/holds/${holdId}/checkout`,
         method: 'POST',
+        body: promoCode ? { promoCode } : {},
         headers: { 'Idempotency-Key': idempotencyKey },
       }),
       invalidatesTags: (_result, _error, { eventId }) => [
@@ -81,6 +83,12 @@ export const seatrushApi = baseApi.injectEndpoints({
     myOrders: build.query<{ orders: Order[] }, void>({
       query: () => '/me/orders',
       providesTags: ['Orders'],
+    }),
+
+    /** Admin screen: POST /events (no login, as the brief says). */
+    createEvent: build.mutation<EventDetails, CreateEventBody>({
+      query: (body) => ({ url: '/events', method: 'POST', body }),
+      invalidatesTags: ['Events'],
     }),
   }),
 });
@@ -95,6 +103,7 @@ export const {
   useReleaseHoldMutation,
   useCheckoutMutation,
   useMyOrdersQuery,
+  useCreateEventMutation,
 } = seatrushApi;
 
 /** A unique key per attempt. crypto.randomUUID needs a secure context (localhost is). */
