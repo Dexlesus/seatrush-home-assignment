@@ -8,6 +8,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
+    // Print every test by name with ✓ / ×, not just a summary per file.
+    reporters: ['verbose'],
     // Decorators like @Type() read metadata through `reflect-metadata`. In the
     // real app NestJS loads it; in unit tests there is no Nest, so we load it.
     setupFiles: ['reflect-metadata'],
