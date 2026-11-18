@@ -28,6 +28,12 @@
   - The code was right and the test was wrong. The test now checks the true outcome (15 winners, 5 × `NO_SEATS_TOGETHER`, no seat twice), and the "lone seats" effect is documented.
 - **React lint:** oxlint flagged `setState` inside effects and a ref read during render on the event page. The AI rewrote it to derive the shown hold and the "someone just took it" seats while rendering, instead of syncing state in effects.
 
+### Extra credit
+- **Choosing the "anything else" item: my choice.** The AI offered 5 ideas (admin screen, QR tickets, live updates with SSE, a waitlist, a rush simulator), with the cost of each. I picked the admin screen: small, it reuses `POST /api/events`, and reviewers can use it to make an event that drops in 1 minute. The rush script was kept small, as a tool for the manual tests.
+- **Two rules that contradict each other.** The brief's rule 7 example expects B2–B3, and the "no lone seats" example expects C4–C5 for the same hall. We made no-lone-seats a switch (`NO_LONE_SEATS`, off by default), so the required rule wins by default and the reviewer can turn the extra on.
+- **A race the first idea missed.** Locking only the requested seats is not enough for no-lone-seats: two fans taking A1 and A3 at the same moment would together leave A2 alone. The fix is to lock the whole row, and there's an E2E test that sends exactly that race.
+- **Found by the manual tests.** Writing check 20 (API down), we found that nginx answers with an HTML 502 page. The screen would say "Something went wrong" instead of "We can't reach the server", and without a "Try again" button. Fixed with a test first.
+
 ### Environment surprises
 - **Port collision:** the first `docker compose up` failed. Port 5433 was taken by another project's container, and 5432 by a local PostgreSQL. We moved to **55432**, and the reason is written in DECISIONS (a reviewer's machine can look the same).
 - **NestJS 12 defaults:** the generated project used Vitest and oxlint instead of Jest and ESLint, and ESM imports. We kept the new defaults.

@@ -53,5 +53,7 @@ jobs:
       - run: curl -fsS http://localhost:3000/api/health
       - run: curl -fsS http://localhost:5173/api/events | grep -q '"saleOpen":true'
       - run: curl -fsS http://localhost:3000/docs-json > /dev/null
+      # 200 fans click one seat on the running stack: exactly one must win.
+      - run: node scripts/rush.mjs 200
       - if: always()
         run: docker compose down -v

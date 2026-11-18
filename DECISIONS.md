@@ -31,9 +31,9 @@ web (React, :5173)  ──/api──▶  api (NestJS, :3000)  ──SQL──▶
 5. **Locks, always in this order:**
    1. `SELECT ... FROM fans WHERE id = $1 FOR UPDATE`. One fan's parallel requests queue up (rule 4).
    2. The strategy picks the seat labels. Best available first locks every candidate seat, ordered by id.
-   3. `SELECT ... FROM seats WHERE label = ANY($2) ORDER BY id FOR UPDATE`. One request at a time per seat (rule 6).
+   3. `SELECT ... FROM seats WHERE row_index IN (rows of the requested seats) ORDER BY id FOR UPDATE`. The **whole row** is locked: one request at a time per row (rule 6), and the no-lone-seats check sees neighbours nobody can change.
 6. **Chain of Responsibility:**
-   `SaleOpen (2) → SeatCount 1–4 (3) → SeatsExist → FanLimit (4) → SeatsAvailable, all or nothing (3/5/6)`.
+   `SaleOpen (2) → SeatCount 1–4 (3) → SeatsExist → FanLimit (4) → SeatsAvailable, all or nothing (3/5/6) → NoLoneSeats (extra)`.
    The first failing link throws a `DomainError`, the transaction rolls back, and **nothing is held**.
 7. **Writes:**
    1. `INSERT holds` with `expires_at = db now() + HOLD_TTL_SECONDS`.
@@ -54,7 +54,7 @@ All SQL uses **parameters** (`$1, $2 ...`): user input is never pasted into SQL 
 | `fans` | `display_name` (can repeat) and `handle` (`UNIQUE`, never reused: it owns orders). |
 | `holds` | `fan_id`, `event_id`, `status` (`ACTIVE` / `RELEASED` / `CONVERTED`), `expires_at`. Indexed by `(fan_id, event_id)` for rule 4. |
 | `hold_seats` | Which seats a hold took. Needed because `seats.hold_id` is overwritten when an expired seat is held again. |
-| `orders` | **`UNIQUE (hold_id)`**: one order per hold, enforced by the database. |
+| `orders` | **`UNIQUE (hold_id)`**: one order per hold, enforced by the database. Also `subtotal_agorot`, `promo_code`, `discount_agorot`, `total_agorot`, with `CHECK (total = subtotal − discount)`, and a **partial unique index** `(fan_id) WHERE promo_code = 'WELCOME20'`: WELCOME20 once per fan, enforced by the database. |
 | `order_items` | **`UNIQUE (seat_id)`**: a seat can be sold once, enforced by the database even if the code had a bug. |
 | `idempotency_keys` | `PRIMARY KEY (fan_id, key)`, `request_hash`, the stored status and body. |
 
@@ -67,7 +67,7 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
    - Because every request locks in the same order, two requests can't wait for each other: **no deadlocks**. If PostgreSQL ever reports one anyway (`40P01`), the API answers `503 BUSY_TRY_AGAIN` with `Retry-After` instead of crashing.
 2. **The check and the write happen under the same locks**, so nothing can change in between.
 3. **Database safety nets:** `order_items UNIQUE (seat_id)` and `orders UNIQUE (hold_id)`.
-4. **Checkout** locks the hold row, then its seats in id order, checks that every seat still points to this hold, and only then sells.
+4. **Checkout** locks the fan row, then the hold row, then its seats in id order, checks that every seat still points to this hold, and only then sells.
    - Ten checkouts of one hold make **one** order: the other nine get the same order (200).
 5. **Proved by E2E tests on a real PostgreSQL** (`api/test/concurrency.e2e-spec.ts`):
    - 50 fans and one seat → exactly one 201 and 49 × 409.
@@ -86,15 +86,27 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
 
 **One clock:** "now" is always PostgreSQL's `now()` (`DbClock`), never the API machine's clock, so several API copies agree. Responses include `serverNow`, so the screen's countdowns don't trust the fan's computer clock.
 
+## Extra credit
+- **No lone seats** (`NO_LONE_SEATS=true`).
+  - A pure function, `loneSeatsLeft(row, taking)`, finds free seats that would end up between two blocked sides (a taken seat or the end of the row). Seats that were already alone are ignored, as the brief says.
+  - For a clicked hold, it is one more link in the chain (`NoLoneSeatsCheck`, 409 `LONE_SEAT`, naming the seat). For best available, `findBestBlock` skips such blocks, so the brief's example gives **C4–C5**.
+  - **The whole row is locked**, not only the requested seats. Otherwise two fans taking A1 and A3 of a 3-seat row at the same moment would each see A2 "with a free neighbour" and together leave it alone. An E2E test sends exactly that and expects one 201 and one 409.
+- **Promo codes** (`orders/promo`).
+  - Each code is a **Strategy** (`PercentOff`, `FixedOffOnce`). Checkout only asks "how much off?".
+  - SAVE10's discount is rounded half up with whole numbers only: `floor((subtotal × 10 + 50) / 100)`. ₪349.35 → discount ₪34.94 → total ₪314.41. The discount is capped at the subtotal, so a total is never below 0.
+  - WELCOME20, once per fan ever: checkout now **locks the fan row first** (the same first lock as a hold), so two checkouts of one fan run one after the other and the second sees the first order. The partial unique index is the database's safety net. It is "used" only by an order row, so a failed checkout never burns it.
+- **Admin screen** (`/admin`): a form over the same `POST /api/events`. The rules live in a pure, tested helper (`web/src/lib/eventForm.ts`); the server validates everything again (zone gaps and overlaps come back as readable messages).
+
 ## Patterns
 - **Chain of Responsibility** (`common/chain/check.ts`).
   - Used for hold checks (`holds/checks/hold-chain.ts`) and checkout checks (`orders/checks`).
   - Each link is one small pure class, unit tested alone, and the data the links need is loaded first.
-  - A new rule (for example "no lone seats") is one more link.
+  - A new rule is one more link: "no lone seats" was added exactly that way, without touching the other checks.
 - **Strategy** (`holds/selection`): how the seats are chosen.
   - `ExplicitSeatsStrategy` holds the seats the fan clicked.
   - `BestAvailableStrategy` handles "N together". It locks the candidates, then runs the pure `findBestBlock`.
   - Everything after the choice is shared.
+  - Promo codes use the same idea: one class per kind of discount.
 - **Idempotency-Key** (`idempotency/idempotency.service.ts`). It runs in the same transaction as the work, so a failed request never "uses up" its key, and concurrent duplicates wait on the primary key, then replay.
 
 ## Assumptions (where the brief was silent)
@@ -121,7 +133,13 @@ Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL
 - **Best available:** when no N side-by-side seats match → **409 `NO_SEATS_TOGETHER`**.
   - Ties go to the lower first seat.
   - The filters are optional `maxPriceAgorot` and `zone`.
-  - Because the most central block is picked first, an 8-seat row fits only 3 pairs (seats 1 and 8 are left alone). The "no lone seats" extra credit would change that.
+  - Because the most central block is picked first, an 8-seat row fits only 3 pairs (seats 1 and 8 are left alone), unless `NO_LONE_SEATS` is on.
+- **No lone seats is a switch, off by default.** The brief's rule 7 example expects B2–B3 and the extra credit expects C4–C5 for the same hall, so both can't be on at once. The required rule wins by default; `NO_LONE_SEATS=true` turns the extra credit on (compose passes it through like `HOLD_TTL_SECONDS`).
+- **Promo codes:**
+  - Any letter case (`save10` = `SAVE10`).
+  - An unknown code → **400 `PROMO_CODE_UNKNOWN`**. WELCOME20 a second time → **409 `PROMO_CODE_USED`**. In both cases nothing is sold and the hold stays, so the fan can check out without the code.
+  - Checking out an already-bought hold returns the same order with its original discount, whatever code is sent the second time.
+  - A failed checkout (expired, not your hold, unknown code) never uses up WELCOME20.
 - **Idempotency-Key** is optional, per fan, and 1–100 characters.
   - A replay returns 200 with an `Idempotent-Replayed: true` header.
   - Errors are not stored, so the fan can retry with the same key.

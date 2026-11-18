@@ -5,6 +5,7 @@ Fans wait for the drop, hold up to 4 seats for a few minutes, and buy them. Admi
 
 - **API:** NestJS + PostgreSQL. All 8 rules, each covered by unit tests and E2E tests on a real PostgreSQL.
 - **Web:** React + MUI + RTK Query. Login, events with countdowns, a live seat map, "best available", a hold countdown, checkout, and my tickets.
+- **Extra credit:** no lone seats (`NO_LONE_SEATS=true`), promo codes at checkout (`SAVE10`, `WELCOME20`), and an **admin screen** to create events (http://localhost:5173/admin).
 
 ## Run it
 ```bash
@@ -21,9 +22,9 @@ No `.env` file and no other steps are needed. This starts:
 
 On a fresh start the API runs its migrations and creates **one demo event that is already on sale** ("SeatRush Live: Opening Night", 10 rows × 16 seats, 3 zones).
 
-A short hold time for testing:
+A short hold time, and the "no lone seats" extra credit switched on:
 ```bash
-HOLD_TTL_SECONDS=20 MAX_SEATS_PER_USER=4 docker compose up --build
+HOLD_TTL_SECONDS=20 MAX_SEATS_PER_USER=4 NO_LONE_SEATS=true docker compose up --build
 ```
 Start clean (this deletes the data): `docker compose down -v`.
 
@@ -52,7 +53,7 @@ This is *identification*, not authentication: anyone who knows a handle can use 
 | `POST /api/events/:id/holds` | fan | Hold `{ "seats": ["B1","B2"] }` or `{ "bestAvailable": { "count": 2, "maxPriceAgorot": 20000, "zone": "Floor" } }`. Optional `Idempotency-Key` header |
 | `DELETE /api/holds/:holdId` | fan | Release early (owner only) |
 | `GET /api/me/holds` | fan | My active holds |
-| `POST /api/holds/:holdId/checkout` | fan | Buy. One order per hold; repeating it returns the same order |
+| `POST /api/holds/:holdId/checkout` | fan | Buy, optionally `{ "promoCode": "SAVE10" }`. One order per hold; repeating it returns the same order |
 | `GET /api/me/orders` | fan | My tickets |
 
 Every error has the same shape, for example:
@@ -65,6 +66,7 @@ All of them are optional. The defaults are in [.env.example](.env.example).
 |---|---|---|
 | `HOLD_TTL_SECONDS` | `300` | How long a hold lasts (rule 3) |
 | `MAX_SEATS_PER_USER` | `4` | Seats per fan per event, held and bought together (rule 4) |
+| `NO_LONE_SEATS` | `false` | Extra credit: refuse holds that leave one seat stuck alone. Off by default, so rule 7's example still answers B2–B3 (on: C4–C5) |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | `localhost` / `55432` / `seatrush` ×3 | Database. Inside compose the API uses `db:5432` |
 | `PORT` | `3000` | API port |
 | `SEED_DEMO_EVENT` | `true` | Create the demo event when there are no events |
@@ -77,12 +79,18 @@ Docker must be running: the E2E tests start their own throwaway PostgreSQL with 
 
 ```bash
 cd api && npm ci
-npm test            # unit tests (98): rules logic, chains, strategy, errors, config
-npm run test:e2e    # E2E tests (60) against real PostgreSQL 17, rules 1–8 and concurrency
+npm test            # unit tests (121): rules logic, chains, strategies, errors, config
+npm run test:e2e    # E2E tests (72) against real PostgreSQL 17, rules 1–8, concurrency, extra credit
 
 cd ../web && npm ci
-npm test            # web helper tests (21): friendly errors, countdowns, seats together, money
+npm test            # web helper tests (27): friendly errors, countdowns, seats together, money, admin form
 ```
+
+**Against the running stack** (after `docker compose up`):
+```bash
+node scripts/rush.mjs 200   # 200 fans click one seat at once → PASS: exactly 1 winner
+```
+[MANUAL_TESTS.md](MANUAL_TESTS.md) has 20 checks by hand for the screens and the fan experience (two windows, expiry colours, double clicks, server down, promo codes...).
 
 Every rule has both kinds of tests:
 
@@ -96,6 +104,8 @@ Every rule has both kinds of tests:
 | 6 Never sell twice | `postgres-errors.spec.ts`, `retryable-errors.spec.ts` | `test/concurrency.e2e-spec.ts` (50 fans, one seat, **exactly one wins**) |
 | 7 Best available | `holds/domain/best-available.spec.ts` (**the brief's B2–B3 example**), `seat-selection.spec.ts` | `test/best-available.e2e-spec.ts` |
 | 8 Checkout | `orders/checks/checkout-checks.spec.ts` | `test/checkout.e2e-spec.ts` |
+| Extra: no lone seats | `holds/domain/lone-seats.spec.ts`, `no-lone-seats.check.spec.ts`, `best-available.spec.ts` (**C4–C5**) | `test/lone-seats.e2e-spec.ts` |
+| Extra: promo codes | `orders/promo/promo-codes.spec.ts` (**₪349.35 → ₪314.41**) | `test/promo-codes.e2e-spec.ts` |
 
 Other checks: `npm run lint` and `npm run typecheck` in `api/` and `web/`.
 
@@ -103,7 +113,9 @@ Other checks: `npm run lint` and `npm run typecheck` in `api/` and `web/`.
 ```
 api/   NestJS API: src/{events,fans,holds,orders,idempotency,common,config,database}, test/ (E2E)
 web/   React app: src/{features,api,lib,app}
+scripts/rush.mjs     live rule-6 check against the running stack (no packages)
 docker-compose.yml   db + api + web, with healthchecks
+MANUAL_TESTS.md      20 checks by hand for the screens
 DECISIONS.md         architecture, schema, double-selling, assumptions, trade-offs
 AI_LOG.md            how AI was used, and what I checked, changed or rejected
 ```
@@ -112,6 +124,7 @@ AI_LOG.md            how AI was used, and what I checked, changed or rejected
 - **No real authentication.** A handle in a header identifies a fan. Anyone who knows a handle can act as that fan.
 - **Seat updates use polling** (every 2 s), not push (SSE/WebSockets).
 - **No rate limiting**, and no waiting room for very large drops (see DECISIONS → *What breaks first*).
-- **The extra credit (no lone seats, promo codes) is not implemented.** "Best available" can therefore leave single seats at the row ends.
-- **No admin screen.** Admins use the API or `/docs`.
-- **Web tests cover the pure helpers.** There are no component or browser tests.
+- **No lone seats is off by default** (see the env table): with it off, "best available" can leave single seats at the row ends.
+- **Promo codes are fixed in code** (`orders/promo/promo-codes.ts`), not managed from the admin screen.
+- **The admin screen has no login**, like the API it calls (the brief: "no login, no roles").
+- **Web tests cover the pure helpers.** There are no component or browser tests; [MANUAL_TESTS.md](MANUAL_TESTS.md) covers the screens by hand.
