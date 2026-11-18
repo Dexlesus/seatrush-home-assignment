@@ -24,6 +24,9 @@ export const ERROR_STATUS = {
   FAN_NOT_FOUND: HttpStatus.NOT_FOUND,
   IDENTITY_REQUIRED: HttpStatus.UNAUTHORIZED,
   UNKNOWN_FAN: HttpStatus.UNAUTHORIZED,
+
+  // Rule 2: before the drop time, nobody can hold seats.
+  SALE_NOT_OPEN: HttpStatus.FORBIDDEN,
 } as const satisfies Record<string, HttpStatus>;
 
 /** 'VALIDATION_FAILED' | 'INTERNAL_ERROR' | ...: made from the keys above. */
