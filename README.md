@@ -81,8 +81,8 @@ The API validates every variable at startup and refuses to start on a bad value 
    - How fans are identified, and the schema.
    - An error catalog: every error code, with the sentence the fan sees for it.
 2. **Test first, one rule at a time.** For each rule:
-   - I wrote unit tests for the logic and E2E tests on a real PostgreSQL.
-   - I ran them and saw them fail (red), then wrote the code until they passed (green).
+   - Unit tests for the logic and E2E tests on a real PostgreSQL came first.
+   - They had to fail (red) before any code was written, and the code was done when they passed (green).
    - The git history shows it: every `test: … (red)` commit comes before its `feat:` / `fix: … (green)` commit.
 3. **Patterns only where they pay off:**
    - **Chain of Responsibility** for the hold and checkout checks: "no lone seats" was added as one more link.
@@ -90,7 +90,7 @@ The API validates every variable at startup and refuses to start on a bad value 
    - **Idempotency-Key** on hold and checkout.
 4. **Then the screens, Docker and the extra credit**, in the same red-then-green way.
 5. **Reviews, where every claim had to be proved by a failing test before anything changed:**
-   - **My mentor's review:**
+   - **An outside code review:**
      - Two claims were real bugs. "now" was read before waiting for locks, so a checkout that waited could sell an expired hold. Both were fixed.
      - Two claims weren't bugs: their tests passed on the first run. They stay as tests.
    - **A production-readiness audit:** 11 possible problems, each rated 1–5. The three rated 3 or more were fixed, each one after a red test:
@@ -98,7 +98,10 @@ The API validates every variable at startup and refuses to start on a bad value 
      - API copies run the migrations one at a time.
      - "Best available" locks one row, not the whole hall.
    - **The 20 manual checks** found 9 problems in what a person sees. Each was fixed or became a written decision. [MANUAL_TESTS.md](MANUAL_TESTS.md) lists them.
-6. **AI:** I worked with Claude Code. [AI_LOG.md](AI_LOG.md) says where the AI wrote code, and what I checked, changed or rejected.
+6. **AI as a pair programmer:**
+   - **The AI** (Claude Code) wrote most of the code.
+   - **I** planned, made the decisions, set the quality bar, tested, and steered it with my comments.
+   - [AI_LOG.md](AI_LOG.md) shows real examples of what I checked, changed or rejected.
 
 ## How it was tested
 | Layer | What it proves | How | Count |

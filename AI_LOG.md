@@ -3,9 +3,31 @@
 **Tool:** Claude Code (model: Claude Opus 5.5), inside VS Code.
 
 ## How I worked with it
-- **Planning:** I made the decisions together with the AI: the locking approach, fan identity, the test database, the patterns my mentor asked for (Chain of Responsibility, Strategy, Idempotency-Key), and the fan-experience details.
-- **Rules 1–2:** in small TDD steps. The AI wrote only the tests, I ran them in VS Code's Testing panel and saw them fail (red), then the AI wrote the code and I saw them pass (green).
-- **Rules 3–8, screens and Docker:** the deadline was close, so my mentor asked me to have the AI build the rest in the same TDD style and to study the code with him after submitting. The git history shows the order: each `test: … (red)` commit comes before its `feat: … (green)` commit.
+**The split:**
+- **The AI wrote most of the code.**
+- **I owned everything else:** the plan, the decisions, the quality bar, the testing, and the reviews.
+- **I treated the AI as a fast pair programmer whose work has to be proven, not trusted.**
+
+- **I planned before any code.** I went through the brief rule by rule and made the design decisions with the AI, in writing:
+  - the locking approach;
+  - fan identity;
+  - the test database;
+  - the error catalog: what the fan reads for every error;
+  - the fan-experience details.
+
+  Each decision had options with trade-offs, and I chose. The examples are below.
+- **I set the rules of work, and kept them to the end:**
+  - **TDD for every rule:** unit tests and E2E tests on a real PostgreSQL first. Run them and see them fail (red), and only then write the code (green).
+  - **The patterns I wanted in the design:** Chain of Responsibility, Strategy, Idempotency-Key.
+  - **The code rules:** no `any`, only parameterized SQL, and small commits.
+
+  The git history shows the order: every `test: … (red)` commit comes before its `feat:` / `fix: … (green)` commit.
+- **I verified at every level.**
+  - **Rules 1–2:** I ran each test myself in VS Code's Testing panel, and saw it go red and then green.
+  - **Rules 3–8, the screens and Docker:** built in the same test-first order. I checked the result the way a fan and a reviewer would: I ran the full stack, went through the manual checks in two browser windows and in `/docs`, and sent back every problem I found.
+- **I used the AI to hunt bugs, not only to write code.**
+  - I put an outside review and a production-readiness audit through it.
+  - **For every claimed bug, I asked for a test that proves it first.** Real bugs were fixed. Claims that weren't bugs were not "fixed".
 
 ## Real examples: checked, changed, rejected
 
@@ -34,8 +56,23 @@
 - **A race the first idea missed.** Locking only the requested seats is not enough for no-lone-seats: two fans taking A1 and A3 at the same moment would together leave A2 alone. The fix is to lock the whole row, and there's an E2E test that sends exactly that race.
 - **Found by the manual tests.** Writing check 20 (API down), we found that nginx answers with an HTML 502 page. The screen would say "Something went wrong" instead of "We can't reach the server", and without a "Try again" button. Fixed with a test first.
 
+### Found in my own testing
+I went through the manual checks myself, and each of these led to a change:
+- **A product call: the screen shouldn't offer what the server will refuse.** After buying 3 seats, the screen still let me select more. The API refused correctly, but only after the click. I asked for the screen to know the limit, so the event now returns `maxSeatsPerFan` and the map caps the picks.
+- **The `/docs` page kept the previous fan's request.** After Authorize as one fan, Logout, and Authorize as another, the open forms still held the first fan's body. The first fix only partly helped. I asked again for a full reset on every Authorize and Logout, and that's what it does now.
+- **A tooltip covered the seat below it**, so that seat couldn't be clicked.
+- **The countdown jumped between seconds.** The fix smooths the clock difference with the server, with unit tests.
+- **The UI review after the redesign:**
+  - a scrollbar in the middle of the page;
+  - the actions belonged next to the map, not at the bottom;
+  - some text showed as broken characters, which an editing script had caused;
+  - pointing at a held or sold seat didn't say which.
+  
+  All four were fixed. The broken characters now have a guard test, so they can't come back unnoticed.
+- **A question that changed the code:** "If `FOR UPDATE` locks the row, how can 10 more requests even reach it?" Working through the answer (a lock makes others *wait*, it doesn't reject them) is what made the missing lock time limit clear, and it was fixed with a test first.
+
 ### A second review (another AI tool), checked point by point
-My mentor ran a second review. I didn't accept its list as is: for each point, a test had to show the bug first.
+I got an outside review of the code, made with another AI tool. I didn't accept its list as is: for each point, a test had to show the bug first.
 - **Real bug: checkout after the expiry.** PostgreSQL's `now()` is the start of the transaction. A test holds the fan's lock from a second connection, starts a checkout before the expiry, and lets it go after: the old code answered **201 and created an order for an expired hold**. Fixed by reading `clock_timestamp()` after all locks. The test now gets 410.
 - **Real bug: a waiting hold lost its waiting time.** The same kind of test showed a hold that waited 1.5 s expired 1.5 s early. Fixed the same way.
 - **Not a bug: replaying an expired hold.** The test passed on the first run: the replay returns the same (expired) hold and never takes the seats back from the new holder. Kept as a test.
@@ -64,6 +101,3 @@ My mentor ran a second review. I didn't accept its list as is: for each point, a
 - **NestJS 12 defaults:** the generated project used Vitest and oxlint instead of Jest and ESLint, and ESM imports. We kept the new defaults.
   - We removed starter files we didn't need: a vendor README, an `AGENTS.md` with ads for a paid service, and a paid deploy tool.
 - **`npm audit`:** 11 "high" findings, all in dev tools. The AI advised against `npm audit fix --force`, because it would downgrade Vitest.
-
-## My review
-_(I fill this in after going through the code with my mentor.)_
