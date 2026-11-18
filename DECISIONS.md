@@ -1,86 +1,164 @@
 # DECISIONS
 
-A living document: every stage adds to it. The sections follow the brief.
+## Architecture
+
+```
+web (React, :5173)  ──/api──▶  api (NestJS, :3000)  ──SQL──▶  PostgreSQL 17
+  RTK Query, MUI            controllers → services → SQL       (all state lives here)
+```
+
+**API modules** (`api/src`):
+
+| Module | What it owns |
+|---|---|
+| `events` | Create an event (zones and all its seats), the events list, the seat map (rule 1), and the demo-event seeder |
+| `fans` | Login by name or handle (`dana#4821`), `FanGuard` (`X-Username`) |
+| `holds` | Hold and release seats (rules 2–7). The **chain of checks** lives in `holds/checks`, and the **seat-selection strategies** in `holds/selection` |
+| `orders` | Checkout (its own chain of checks) and "My tickets" (rule 8) |
+| `idempotency` | `Idempotency-Key` for holds and checkout, in the same transaction as the work |
+| `common`, `config`, `database` | One error shape and error catalog, fail-fast env validation, migrations, the database clock |
+
+### How a hold request flows from the screen to the database
+1. **Screen.** The fan clicks seats, or "N together". The button is disabled while the request is pending, and the request carries a fresh `Idempotency-Key` (reused only for a "Try again" after a network error).
+2. **`POST /api/events/:id/holds`**:
+   1. `FanGuard` reads `X-Username` and loads the fan (401 if unknown).
+   2. The `ValidationPipe` checks the body (400).
+3. **`HoldsService.hold`**:
+   1. Picks a **Strategy**: `ExplicitSeatsStrategy` or `BestAvailableStrategy`.
+   2. Fingerprints the request, then opens **one transaction**.
+4. **`IdempotencyService`** runs `INSERT INTO idempotency_keys ... ON CONFLICT DO NOTHING`.
+   - The key was seen before → it replays the stored answer (200) or refuses a different body (422).
+5. **Locks, always in this order:**
+   1. `SELECT ... FROM fans WHERE id = $1 FOR UPDATE`. One fan's parallel requests queue up (rule 4).
+   2. The strategy picks the seat labels. Best available first locks every candidate seat, ordered by id.
+   3. `SELECT ... FROM seats WHERE label = ANY($2) ORDER BY id FOR UPDATE`. One request at a time per seat (rule 6).
+6. **Chain of Responsibility:**
+   `SaleOpen (2) → SeatCount 1–4 (3) → SeatsExist → FanLimit (4) → SeatsAvailable, all or nothing (3/5/6)`.
+   The first failing link throws a `DomainError`, the transaction rolls back, and **nothing is held**.
+7. **Writes:**
+   1. `INSERT holds` with `expires_at = db now() + HOLD_TTL_SECONDS`.
+   2. `INSERT hold_seats`.
+   3. `UPDATE seats SET status = 'HELD', hold_id, held_until`.
+   4. Store the response next to the idempotency key.
+   5. COMMIT → **201**.
+8. **Errors.** One exception filter turns every error into `{ statusCode, code, message, details, path, timestamp }`. The screen maps each `code` to a sentence ("Someone just took B3").
+
+All SQL uses **parameters** (`$1, $2 ...`): user input is never pasted into SQL text. The only SQL that is built from pieces uses one of two fixed column names.
+
+## Schema
+| Table | Why |
+|---|---|
+| `events` | `drop_at`, `starts_at`, `row_count`, `seats_per_row`. `CHECK (drop_at < starts_at)`, 1–100 rows and 1–100 seats per row. |
+| `zones` | A price for a range of rows. Rows are stored as numbers (A = 0); the API speaks letters. `price_agorot >= 0`, and names are unique per event. |
+| `seats` | **Every seat exists as a row**, created with the event in the same transaction. That is what makes row locks possible. `UNIQUE (event_id, label)`. `status` is `AVAILABLE` / `HELD` / `SOLD`, and `hold_id` + `held_until` say who holds it and until when. A CHECK says a HELD seat always has both. |
+| `fans` | `display_name` (can repeat) and `handle` (`UNIQUE`, never reused: it owns orders). |
+| `holds` | `fan_id`, `event_id`, `status` (`ACTIVE` / `RELEASED` / `CONVERTED`), `expires_at`. Indexed by `(fan_id, event_id)` for rule 4. |
+| `hold_seats` | Which seats a hold took. Needed because `seats.hold_id` is overwritten when an expired seat is held again. |
+| `orders` | **`UNIQUE (hold_id)`**: one order per hold, enforced by the database. |
+| `order_items` | **`UNIQUE (seat_id)`**: a seat can be sold once, enforced by the database even if the code had a bug. |
+| `idempotency_keys` | `PRIMARY KEY (fan_id, key)`, `request_hash`, the stored status and body. |
+
+Money is **whole agorot** (`int`), never floats. Migrations are hand-written SQL (`api/src/database/migrations`), run automatically at startup (`migrationsRun`, one transaction each). `synchronize` is off.
+
+## Double-selling: exactly how it's prevented
+1. **Row locks in a fixed order.**
+   - Every hold locks the fan row, then its seats `ORDER BY id`, with `SELECT ... FOR UPDATE`, in **one transaction**.
+   - With 50 requests for B7, the first one locks the row. The other 49 wait, and once it commits each of them re-reads B7, sees it HELD, and gets `409 SEAT_TAKEN`.
+   - Because every request locks in the same order, two requests can't wait for each other: **no deadlocks**. If PostgreSQL ever reports one anyway (`40P01`), the API answers `503 BUSY_TRY_AGAIN` with `Retry-After` instead of crashing.
+2. **The check and the write happen under the same locks**, so nothing can change in between.
+3. **Database safety nets:** `order_items UNIQUE (seat_id)` and `orders UNIQUE (hold_id)`.
+4. **Checkout** locks the hold row, then its seats in id order, checks that every seat still points to this hold, and only then sells.
+   - Ten checkouts of one hold make **one** order: the other nine get the same order (200).
+5. **Proved by E2E tests on a real PostgreSQL** (`api/test/concurrency.e2e-spec.ts`):
+   - 50 fans and one seat → exactly one 201 and 49 × 409.
+   - One fan sends 10 parallel holds → exactly 4 succeed.
+   - 20 pairs of opposite-order requests finish fast with one winner each.
+   - The same Idempotency-Key ×10 → one hold.
+   - 20 parallel "best available" requests → no seat appears twice.
+   - 10 parallel checkouts → one order.
+
+### How expiry works (rule 5)
+**Nothing waits for a cleanup job. Expiry is a comparison with the database clock:**
+- A seat counts as free when `status = 'AVAILABLE'`, or when `status = 'HELD' AND held_until <= now()`. The hold check uses this rule, and the seat map shows such seats as AVAILABLE the instant the hold ends (not just within 5 seconds).
+- Checkout fails with **410 `HOLD_EXPIRED`** when `expires_at <= now()`.
+- Rule 4 counts only holds with `expires_at > now()`.
+- Releasing or checking out an old, expired hold never touches seats another fan has held since: only seats whose `hold_id` is still this hold are changed.
+
+**One clock:** "now" is always PostgreSQL's `now()` (`DbClock`), never the API machine's clock, so several API copies agree. Responses include `serverNow`, so the screen's countdowns don't trust the fan's computer clock.
+
+## Patterns
+- **Chain of Responsibility** (`common/chain/check.ts`).
+  - Used for hold checks (`holds/checks/hold-chain.ts`) and checkout checks (`orders/checks`).
+  - Each link is one small pure class, unit tested alone, and the data the links need is loaded first.
+  - A new rule (for example "no lone seats") is one more link.
+- **Strategy** (`holds/selection`): how the seats are chosen.
+  - `ExplicitSeatsStrategy` holds the seats the fan clicked.
+  - `BestAvailableStrategy` handles "N together". It locks the candidates, then runs the pure `findBestBlock`.
+  - Everything after the choice is shared.
+- **Idempotency-Key** (`idempotency/idempotency.service.ts`). It runs in the same transaction as the work, so a failed request never "uses up" its key, and concurrent duplicates wait on the primary key, then replay.
+
+## Assumptions (where the brief was silent)
+- **Fans:** a name gives a NEW fan with a handle like `dana#4821`. That is 4 random digits, retried on collision, then 6 digits after 5 collisions.
+  - Two Danas are two fans. A handle (any case) logs back in. Handles are never reused.
+  - Every fan request sends `X-Username: <handle>`.
+  - This is identification, not authentication, as the brief asks.
+- **Zones:** every row must be in exactly one zone. Gaps, overlaps, missing rows and reversed ranges are rejected, with all problems reported at once.
+- **Limits:** 1–100 rows and 1–100 seats per row. After row Z come AA, AB.... Prices are whole agorot. Seat labels are case-insensitive (`b7` = `B7`), and `B07` is not a label.
+- **Drop time:** the sale is open from exactly `dropAt` (`now >= dropAt`). Holding earlier gives **403 `SALE_NOT_OPEN`**, with `secondsLeft`. Viewing never needs a login.
+- **Holds:** 1–4 seats per request (fixed by the brief); the per-fan limit is configurable.
+  - The same seat twice → 400 `DUPLICATE_SEATS`.
+  - An unknown seat → 400 `SEAT_NOT_FOUND`.
+  - Both `seats` and `bestAvailable` in one request → 400 `INVALID_HOLD_REQUEST`.
+- **Release:**
+  - Another fan's hold → **404** (we don't confirm it exists).
+  - An expired or already-released hold → 204, and nothing changes.
+  - A bought hold → 409.
+- **Checkout:**
+  - Another fan → **403 `NOT_YOUR_HOLD`** (the brief says only the holder can check out).
+  - Released → 409.
+  - Expired → **410 Gone**.
+  - Repeated → 200 with the same order.
+- **Best available:** when no N side-by-side seats match → **409 `NO_SEATS_TOGETHER`**.
+  - Ties go to the lower first seat.
+  - The filters are optional `maxPriceAgorot` and `zone`.
+  - Because the most central block is picked first, an 8-seat row fits only 3 pairs (seats 1 and 8 are left alone). The "no lone seats" extra credit would change that.
+- **Idempotency-Key** is optional, per fan, and 1–100 characters.
+  - A replay returns 200 with an `Idempotent-Replayed: true` header.
+  - Errors are not stored, so the fan can retry with the same key.
+- **Demo event:** created at startup when there are no events (`SEED_DEMO_EVENT=true`). A PostgreSQL advisory lock stops several copies from seeding twice.
 
 ## Stack choices and libraries
-- **Backend:** NestJS 12 with TypeScript `strict: true`. NestJS is the framework the team uses.
-  - **Tests: Vitest.** It is the default test runner in NestJS 12, and the web app will use it too, so there is one runner for the whole repo.
-  - **Lint: oxlint**, the NestJS 12 default, with `no-explicit-any` raised from "off" to "error" (no `any` in this codebase).
-  - `strictPropertyInitialization` stays off, as NestJS sets it. DTO and entity fields are filled by the framework, not by a constructor, so TypeScript can't see that they get a value. The only alternative is a `!` on every field.
-- **Database:** PostgreSQL 17 (the official Docker image). The ORM, TypeORM, comes in stage 1.
-- **E2E tests** will run against a real PostgreSQL that Testcontainers starts (stage 0c). Every run gets a clean database and needs no manual steps.
-- **Frontend:** React + TypeScript (Vite), MUI, Redux Toolkit + RTK Query (stage 9).
-- **Repo layout:** `/api` and `/web`, as the brief requires.
-- **Removed from the NestJS starter:**
-  - the `nest deploy` script and `@nestjs/mau`, a paid hosting platform we don't use
-  - the generated `README.md` and `AGENTS.md` (vendor boilerplate)
-- **`npm audit`:** 0 vulnerabilities in production dependencies.
-  - The 11 "high" findings are all in dev tools (the Nest CLI, Vitest, Vite) and come from `picomatch`.
-  - The flaw is a slow regex on glob patterns, and we only pass it patterns we wrote ourselves.
-  - The suggested `npm audit fix --force` would downgrade Vitest to v3, which is a breaking change, so we don't run it.
+- **API:** NestJS 12 + TypeScript (strict, ESM), the framework the team uses.
+  - TypeORM 1 is used for the connection, the entities and the migration runner. The concurrency-critical paths are **explicit, parameterized SQL**, so every lock is visible.
+  - `class-validator` validates bodies and config, and Swagger reads it too.
+  - `@nestjs/swagger` serves `/docs` and `/docs-json`.
+- **Tests:** Vitest (the NestJS 12 default) and supertest.
+  - E2E tests use **Testcontainers**, so every test file gets its own fresh PostgreSQL 17 and needs no manual steps.
+  - The web app's helpers are tested with Vitest too.
+- **Web:** React 19 + Vite + TypeScript, MUI, Redux Toolkit + RTK Query (polling, cache tags), React Router.
+- **Lint:** oxlint, with `no-explicit-any` as an error.
+- **Docker:** multi-stage images that run as non-root. The web app is served by unprivileged nginx, which proxies `/api`.
+- **Infrastructure:**
+  - `docker compose up` needs **no `.env`**, because every variable has a default.
+  - The database is published on host port **55432**: 5432 and 5433 were already taken on the dev machine.
+  - Healthchecks gate the start order: db → api → web.
+- `npm audit`: 0 issues in production dependencies. The dev-only `picomatch` findings are not "fixed" with `--force`, because that would downgrade Vitest.
 
-## Architecture (so far)
-- **`configureApp()`** (`api/src/app.setup.ts`) holds everything global: the `/api` prefix, validation, the error filter and Swagger. `main.ts` **and the E2E tests** both call it, so the tests run the same app as production.
-- **Config fails fast.** Every env var is validated at startup (`api/src/config/env.validation.ts`). A bad value such as `HOLD_TTL_SECONDS=abc` stops the server with a message that lists every problem. Without this, it would break later, in the middle of a drop.
-- **One error shape:** `{ statusCode, code, message, details, path, timestamp }`.
-  - Services throw `DomainError(code, message, details)` and know nothing about HTTP.
-  - The **error catalog** (`error-codes.ts`) maps each code to its HTTP status. TypeScript makes sure every code has one.
-  - Nest's own errors (unknown route, broken JSON) get the same shape, with a code made from the status (`NOT_FOUND`).
-  - Unexpected crashes are logged in full, but the client only gets a generic message: no SQL and no stack traces.
-- **Validation:** `class-validator` checks both request bodies and config. It's one library, and Swagger understands it.
-  - Unknown fields are rejected (`forbidNonWhitelisted`).
-  - Errors list every field with its full path, for example `zones.0.priceAgorot`.
-- **Docs:** interactive docs at `/docs`, OpenAPI JSON at `/docs-json`. API routes live under `/api`.
+## What I'd change before a real launch
+- **Real authentication** (OAuth or passwordless email) instead of a handle in a header, plus rate limiting per fan and per IP.
+- **A waiting room / queue in front of the drop**, so 100k clicks become a steady flow.
+- **Push instead of polling** (SSE or WebSockets) for seat updates.
+- **A cleanup job and partitioning:** expiry is correct without one, but a job would keep the `seats` table tidy and data volumes small.
+- **Scaling the database:** tune the connection pool, add PgBouncer, add read replicas for the seat map and events list, and cache the seat map for 1–2 seconds.
+- Observability (metrics on lock waits and 409/503 rates), load tests, real payments with webhooks, and audit logs.
 
-- **Hold checks use Chain of Responsibility** (`src/holds/checks/`).
-  - Every rule that can refuse a hold is one small `HoldCheck` link: the sale is open, 1–4 seats, the seats exist, they are free, the per-fan limit.
-  - The data the checks need is loaded first (inside the transaction, after the locks) into a `HoldContext`. The checks themselves are pure, so each one is unit tested on its own.
-  - A new rule (like "no lone seats") is one new link; the other links don't change.
-- **One clock: the database's `now()`** (`DbClock`).
-  - The drop time and hold expiry are decided by it, so several API copies with drifting machine clocks still agree.
-  - Responses carry `serverNow` so the screen counts down from the server's time, not the fan's computer clock.
-- **Rule 2:** holding before `dropAt` → **403 `SALE_NOT_OPEN`** with `opensAt` and `secondsLeft`. The sale is open from exactly `dropAt` on (`now >= dropAt`).
-  - Viewing (`GET /api/events`, `/api/events/:id`, `/api/events/:id/seats`) needs no login, before and after the drop.
+## Two short answers
+**What breaks first if 100,000 fans arrive in the first minute?**
+- The **database connection pool and the per-seat lock queues**. Every hold is a short transaction that holds a connection while it waits for row locks. With thousands of requests for the same hot seats, requests queue on those locks, the pool runs out, and latency grows until requests time out.
+- Seat-map polling (every fan, every 2 s) adds a heavy read load.
+- Correctness holds: still no double-selling. What suffers is speed.
+- The fixes are a queue or waiting room, a bigger pool with PgBouncer, a cached or pushed seat map, and per-fan rate limits.
 
-## Infrastructure
-- `docker compose up` works on a fresh clone **without a `.env` file**, because every variable has a default (`${VAR:-default}`). The brief says "no manual steps".
-- PostgreSQL is published on host port **55432**, not 5432, so it doesn't clash with a PostgreSQL that is already installed or running for another project.
-  - This happened on the dev machine: 5432 was taken by a local PostgreSQL and 5433 by another project's container. A reviewer's machine can look the same.
-  - The port can be changed with `DB_PORT`.
-- `.gitattributes` stores text files with LF line endings, so files committed from Windows still work inside Linux containers.
-
-## Double-selling (decided; built in stages 3–6)
-- **Pessimistic locking.** One transaction runs `SELECT ... FOR UPDATE`, first on the fan's row and then on the seats, ordered by id. Because the lock order is always the same, two requests can't deadlock.
-- **Safety nets in the schema:** `order_items UNIQUE(seat_id)` and `orders UNIQUE(hold_id)`.
-- **Time comes from the database clock (`now()`).** Expiry needs no cleanup job, and it works with several copies of the API.
-
-## Schema (so far)
-- **`events`**: name, venue, `starts_at`, `drop_at`, `row_count`, `seats_per_row`. The CHECK `drop_at < starts_at` means tickets go on sale before the show.
-- **`zones`**: `event_id`, name, `from_row`, `to_row`, `price_agorot`.
-  - Rows are stored as numbers (A = 0), so they are easy to compare. The API speaks letters.
-  - `price_agorot >= 0`, and zone names are unique per event.
-- **`seats`**: `event_id`, `zone_id`, `row_index`, `seat_number`, `label` ("B7"), status `AVAILABLE | HELD | SOLD`.
-  - `UNIQUE (event_id, label)` and `UNIQUE (event_id, row_index, seat_number)`: one B7 per event.
-  - The first unique index also serves "all seats of an event".
-- **`fans`**: `display_name` (what the fan typed; can repeat) and `handle` (`UNIQUE`, e.g. `dana#4821`).
-- **All seats are created up front**, in the same transaction as the event: the event, its zones and its seats are saved together or not at all. This is what lets rule 6 lock real seat rows.
-- **Migrations are hand-written SQL**, listed in `src/database/migrations/index.ts` and run automatically when the app starts (`migrationsRun`), one transaction each. `synchronize` is off: the schema only changes through reviewed migrations.
-
-## Assumptions
-- **Fan identity.** A fan types a name and gets a unique handle such as `dana#4821`.
-  - The tag is 4 random digits. After 5 collisions it switches to 6 digits.
-  - Two people named Dana are two different fans.
-  - Handles are never released or reused, because a handle owns orders and tickets.
-  - This is identification, not authentication: the brief asks for no passwords.
-  - `POST /api/session { name }`:
-    - A name ("Dana") creates a new fan → **201**.
-    - A handle ("dana#4821", any case) logs that fan back in → **200**.
-    - An unknown handle → **404 `FAN_NOT_FOUND`**.
-  - Every fan request sends **`X-Username: dana#4821`**. `FanGuard` answers 401 `IDENTITY_REQUIRED` (no header) or 401 `UNKNOWN_FAN` (no such fan).
-  - **No "is it free?" check before saving a handle.** The INSERT itself is the check: on a unique violation (PostgreSQL `23505`) we retry with another number. Two people who sign up at the same moment still can't get the same handle.
-  - Names are 2–20 characters: letters in any language, digits, space, `_`, `-`. Symbols like `<` `>` are rejected.
-- **Every row must be in exactly one zone.** Otherwise a seat would have no price, or two prices. A gap, an overlap, a row outside the hall or a reversed range is rejected with its own code (`ZONES_GAP`, `ZONES_OVERLAP`, ...), and all problems are reported at once.
-- **Size limits:** 1–100 rows and 1–100 seats per row (up to 10,000 seats). The brief's example hall has 2,000 seats. After row Z come AA, AB ..., like spreadsheet columns.
-- **Prices are whole agorot** (`priceAgorot`, ₪300 = 30000), never floats, so there are no rounding errors.
-- **Seat labels** are case-insensitive on input (`b7` = `B7`). Seat numbers start at 1, and `B07` is not a valid label.
-- **The drop time must be before the show starts** (`INVALID_EVENT_TIMES`).
+**Does the protection still work with 3 copies of the API?**
+- **Yes.** All protection is inside PostgreSQL: row locks, UNIQUE constraints, idempotency keys in a table, and the database clock. Nothing depends on the memory or clock of one API process.
+- Three copies are three more clients of the same database, so the same locks serialize them. The demo seeder is also safe, thanks to a PostgreSQL advisory lock.

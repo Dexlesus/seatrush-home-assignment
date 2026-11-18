@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  api:
+    name: API - lint, types, unit + e2e tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # Testcontainers starts a real PostgreSQL 17 with the runner's Docker.
+      - run: npm run test:e2e
+      - run: npm run build
+
+  web:
+    name: Web - lint, types, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  compose:
+    name: docker compose up --build works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build -d --wait
+      - run: curl -fsS http://localhost:3000/api/health
+      - run: curl -fsS http://localhost:5173/api/events | grep -q '"saleOpen":true'
+      - run: curl -fsS http://localhost:3000/docs-json > /dev/null
+      - if: always()
+        run: docker compose down -v
