@@ -34,6 +34,8 @@ export async function createTestApp(
     DB_USER: database.connection.user,
     DB_PASSWORD: database.connection.password,
     DB_NAME: database.connection.database,
+    // Tests create their own events; the demo event would only get in the way.
+    SEED_DEMO_EVENT: 'false',
     ...env,
   });
   const { AppModule } = await import('../../src/app.module.js');

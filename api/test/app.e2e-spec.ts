@@ -16,7 +16,7 @@ describe('App setup (e2e)', () => {
     await request(t.app.getHttpServer())
       .get('/api/health')
       .expect(200)
-      .expect({ status: 'ok' });
+      .expect({ status: 'ok', database: 'up' });
   });
 
   it('an unknown route returns our error shape', async () => {
