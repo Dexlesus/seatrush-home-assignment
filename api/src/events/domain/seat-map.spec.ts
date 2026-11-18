@@ -8,8 +8,18 @@ import {
 } from './seat-map.js';
 
 // The example event from the explanation: 3 rows (A–C), 4 seats per row.
-const VIP: ZoneInput = { name: 'VIP', fromRow: 'A', toRow: 'A', priceAgorot: 30000 };
-const REGULAR: ZoneInput = { name: 'Regular', fromRow: 'B', toRow: 'C', priceAgorot: 15000 };
+const VIP: ZoneInput = {
+  name: 'VIP',
+  fromRow: 'A',
+  toRow: 'A',
+  priceAgorot: 30000,
+};
+const REGULAR: ZoneInput = {
+  name: 'Regular',
+  fromRow: 'B',
+  toRow: 'C',
+  priceAgorot: 15000,
+};
 
 describe('rowLabel: row number → letters', () => {
   it('names the first rows A, B ... Z', () => {
@@ -26,11 +36,19 @@ describe('rowLabel: row number → letters', () => {
 
 describe('parseSeatLabel: "B7" → row and seat number', () => {
   it('reads a valid seat label', () => {
-    expect(parseSeatLabel('B7')).toEqual({ label: 'B7', rowIndex: 1, seatNumber: 7 });
+    expect(parseSeatLabel('B7')).toEqual({
+      label: 'B7',
+      rowIndex: 1,
+      seatNumber: 7,
+    });
   });
 
   it('accepts lowercase and returns the normal form', () => {
-    expect(parseSeatLabel('b7')).toEqual({ label: 'B7', rowIndex: 1, seatNumber: 7 });
+    expect(parseSeatLabel('b7')).toEqual({
+      label: 'B7',
+      rowIndex: 1,
+      seatNumber: 7,
+    });
   });
 
   it('rejects labels that are not a seat', () => {
@@ -85,15 +103,32 @@ describe('generateSeats: build every seat of the event', () => {
   it('creates rows × seats per row seats, from A1 to C4 in order', () => {
     expect(seats).toHaveLength(12);
     expect(seats.map((s) => s.label)).toEqual([
-      'A1', 'A2', 'A3', 'A4',
-      'B1', 'B2', 'B3', 'B4',
-      'C1', 'C2', 'C3', 'C4',
+      'A1',
+      'A2',
+      'A3',
+      'A4',
+      'B1',
+      'B2',
+      'B3',
+      'B4',
+      'C1',
+      'C2',
+      'C3',
+      'C4',
     ]);
   });
 
   it("gives each seat its zone's name and price", () => {
-    expect(seats[0]).toMatchObject({ label: 'A1', zoneName: 'VIP', priceAgorot: 30000 });
-    expect(seats[11]).toMatchObject({ label: 'C4', zoneName: 'Regular', priceAgorot: 15000 });
+    expect(seats[0]).toMatchObject({
+      label: 'A1',
+      zoneName: 'VIP',
+      priceAgorot: 30000,
+    });
+    expect(seats[11]).toMatchObject({
+      label: 'C4',
+      zoneName: 'Regular',
+      priceAgorot: 15000,
+    });
   });
 });
 
