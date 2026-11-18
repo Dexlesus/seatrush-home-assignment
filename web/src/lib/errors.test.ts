@@ -52,6 +52,20 @@ describe('friendlyError: errors read like people talk, not like "Error 409"', ()
     );
   });
 
+  it('treats a 502/503/504 page from the proxy (API down) as "can\'t reach the server"', () => {
+    // nginx answers with an HTML page, so RTK Query can't parse it as JSON.
+    const proxyDown = {
+      status: 'PARSING_ERROR',
+      originalStatus: 502,
+      data: '<html>502 Bad Gateway</html>',
+      error: 'SyntaxError',
+    };
+    expect(friendlyError(proxyDown)).toBe(
+      "We can't reach the server right now. Check your connection and try again.",
+    );
+    expect(errorCode(proxyDown)).toBeNull(); // so the screen offers "Try again"
+  });
+
   it("falls back to the server's own message for codes it doesn't know", () => {
     expect(
       friendlyError({ status: 418, data: { code: 'SOMETHING_NEW', message: 'A new problem.' } }),

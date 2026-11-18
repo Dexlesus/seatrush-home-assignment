@@ -45,7 +45,9 @@ export function friendlyError(error: AnyError): string {
     return '';
   }
   if (typeof error === 'object' && 'status' in error) {
-    if (error.status === 'FETCH_ERROR') {
+    // FETCH_ERROR: no network. PARSING_ERROR: the proxy answered with an HTML
+    // error page (e.g. 502 when the API is down), not with our JSON.
+    if (error.status === 'FETCH_ERROR' || error.status === 'PARSING_ERROR') {
       return "We can't reach the server right now. Check your connection and try again.";
     }
     if (error.status === 'TIMEOUT_ERROR') {
